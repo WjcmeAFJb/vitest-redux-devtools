@@ -27,8 +27,14 @@ export interface ConnectOptions extends DevToolsOptions {
      * Capture a sync stack trace at every `send()` call site. Disabled by
      * default to keep the wire small. When enabled, the panel's "Trace"
      * inspector tab gets a stack for each action.
+     *
+     * When given a function, it's called with the action being dispatched
+     * and may return a string to override the captured stack. This lets
+     * callers tailor the trace per-action (e.g. drop noisy frames for
+     * high-volume action types, or substitute a stack from elsewhere).
+     * Returning `undefined` falls back to the default capture.
      */
-    trace?: boolean | ((...args: unknown[]) => string | undefined);
+    trace?: boolean | ((action: ActionLike) => string | undefined);
     /** Limit on captured stack frames. Default 10. */
     traceLimit?: number;
     /** History ring size; replayed when a new panel attaches. Default 50. */

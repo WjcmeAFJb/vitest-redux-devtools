@@ -190,12 +190,16 @@ export function connect(opts = {}) {
             data: { ...frame, instanceId, name },
         });
     }
-    function makeStack() {
+    function makeStack(action) {
         if (!traceFlag)
             return undefined;
         if (typeof traceFlag === 'function') {
+            // Function form: caller fully controls the stack for this action.
+            // Returning `undefined`/empty disables the trace for it (matching
+            // the browser extension), so we don't fall through to the default
+            // capture.
             try {
-                const stack = traceFlag();
+                const stack = traceFlag(action);
                 return stack ? { stack, sources: {} } : undefined;
             }
             catch {
@@ -216,7 +220,7 @@ export function connect(opts = {}) {
         },
         send(action, state) {
             const liftedAction = typeof action === 'string' ? { type: action } : action;
-            const captured = makeStack();
+            const captured = makeStack(liftedAction);
             flush({
                 type: 'ACTION',
                 action: stringify({
