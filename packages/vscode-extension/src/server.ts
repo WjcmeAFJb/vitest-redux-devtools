@@ -1,9 +1,11 @@
 import * as http from 'node:http'
 // `socketcluster-server` does `require(opts.wsEngine)` at runtime, which
-// esbuild can't follow. Importing `ws` here forces esbuild to bundle it,
-// and we pass the module object directly as `wsEngine` so SC never falls
-// back to the dynamic require.
-import * as ws from 'ws'
+// esbuild can't follow. Importing `ws` here forces esbuild to bundle it.
+// We then hand SC a `{ Server }` shim — SC checks `wsEngine.Server` (the
+// legacy CJS export name), but `ws`'s ESM wrapper only exposes
+// `WebSocketServer`, so we re-alias.
+import { WebSocketServer } from 'ws'
+const wsEngine = { Server: WebSocketServer }
 
 /**
  * Minimal Redux DevTools relay server.
@@ -39,7 +41,7 @@ export async function startServer(port: number): Promise<ServerHandle> {
   const httpServer = http.createServer()
   const agServer = socketClusterServer.attach(httpServer, {
     allowClientPublish: false,
-    wsEngine: ws,
+    wsEngine,
   })
 
   agServer.setMiddleware(

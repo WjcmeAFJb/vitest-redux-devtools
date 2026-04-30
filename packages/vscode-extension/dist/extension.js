@@ -10830,13 +10830,13 @@ var require_server = __commonJS({
           this.emit("ready", {});
         })();
       }
-      let wsEngine = typeof opts.wsEngine === "string" ? require(opts.wsEngine) : opts.wsEngine;
-      if (!wsEngine || !wsEngine.Server) {
+      let wsEngine2 = typeof opts.wsEngine === "string" ? require(opts.wsEngine) : opts.wsEngine;
+      if (!wsEngine2 || !wsEngine2.Server) {
         throw new InvalidOptionsError(
           "The wsEngine option must be a path or module name which points to a valid WebSocket engine module with a compatible interface"
         );
       }
-      let WSServer = wsEngine.Server;
+      let WSServer = wsEngine2.Server;
       if (opts.authPrivateKey != null || opts.authPublicKey != null) {
         if (opts.authPrivateKey == null) {
           throw new InvalidOptionsError(
@@ -11132,18 +11132,6 @@ var fs = __toESM(require("node:fs"));
 var http = __toESM(require("node:http"));
 
 // ../../node_modules/.pnpm/ws@8.20.0/node_modules/ws/wrapper.mjs
-var wrapper_exports = {};
-__export(wrapper_exports, {
-  PerMessageDeflate: () => import_permessage_deflate.default,
-  Receiver: () => import_receiver.default,
-  Sender: () => import_sender.default,
-  WebSocket: () => import_websocket.default,
-  WebSocketServer: () => import_websocket_server.default,
-  createWebSocketStream: () => import_stream.default,
-  default: () => wrapper_default,
-  extension: () => import_extension.default,
-  subprotocol: () => import_subprotocol.default
-});
 var import_stream = __toESM(require_stream(), 1);
 var import_extension = __toESM(require_extension(), 1);
 var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
@@ -11152,16 +11140,16 @@ var import_sender = __toESM(require_sender(), 1);
 var import_subprotocol = __toESM(require_subprotocol(), 1);
 var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
-var wrapper_default = import_websocket.default;
 
 // src/server.ts
+var wsEngine = { Server: import_websocket_server.default };
 async function startServer(port) {
   const scsModule = await Promise.resolve().then(() => __toESM(require_socketcluster_server()));
   const socketClusterServer = scsModule.default ?? scsModule;
   const httpServer = http.createServer();
   const agServer = socketClusterServer.attach(httpServer, {
     allowClientPublish: false,
-    wsEngine: wrapper_exports
+    wsEngine
   });
   agServer.setMiddleware(
     agServer.MIDDLEWARE_INBOUND,
