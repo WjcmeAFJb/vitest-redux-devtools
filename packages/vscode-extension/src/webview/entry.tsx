@@ -51,23 +51,30 @@ function buildIdentityMap(absPath: string, contents: string): string {
   })
 }
 
+function utf8Btoa(s: string): string {
+  // btoa() rejects characters > 0xff; encode UTF-8 to bytes first.
+  return btoa(unescape(encodeURIComponent(s)))
+}
+
+function buildInlineSourceMappingUrl(absPath: string, contents: string): string {
+  const json = buildIdentityMap(absPath, contents)
+  return 'data:application/json;charset=utf-8;base64,' + utf8Btoa(json)
+}
+
 const origFetch = globalThis.fetch
 globalThis.fetch = function patchedFetch(input: any, init?: any) {
   const url = typeof input === 'string' ? input : (input?.url ?? '')
   if (typeof url === 'string' && url.startsWith(SOURCE_HOST)) {
     const after = url.slice(SOURCE_HOST.length)
-    const wantsMap = after.endsWith('.map')
-    const path = decodeURI(wantsMap ? after.slice(0, -4) : after)
+    const path = decodeURI(after)
     const content = sourcesMap.get(path)
     if (content === undefined) {
       return Promise.resolve(new Response('', { status: 404 }))
     }
-    if (wantsMap) {
-      return Promise.resolve(new Response(buildIdentityMap(path, content), {
-        headers: { 'content-type': 'application/json' },
-      }))
-    }
-    const withMap = `${content}\n//# sourceMappingURL=${SOURCE_HOST}${encodeURI(path)}.map`
+    // Inline the identity sourcemap as a data: URL so the panel's
+    // `getSourceMap` parses it synchronously (no second fetch with a
+    // path-resolution bug).
+    const withMap = `${content}\n//# sourceMappingURL=${buildInlineSourceMappingUrl(path, content)}`
     return Promise.resolve(new Response(withMap, {
       headers: { 'content-type': 'text/plain' },
     }))
@@ -125,6 +132,7 @@ setTimeout(() => {
 ;(window as any).__persistor = persistor
 
 store.subscribe(() => collectSources(store.getState()))
+
 
 createRoot(container).render(
   React.createElement(
