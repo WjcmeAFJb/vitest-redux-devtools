@@ -1,25 +1,61 @@
 {
   "name": "vitest-redux-devtools",
   "displayName": "Redux DevTools (Vitest)",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Open the real Redux DevTools UI inside VSCode and connect Vitest tests to it.",
   "publisher": "local",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Debuggers", "Other"],
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "vitestReduxDevTools.open",
-        "title": "Redux DevTools: Open Panel"
+        "title": "Redux DevTools: Open Panel",
+        "icon": "$(debug-alt)"
       },
       {
         "command": "vitestReduxDevTools.copyEnv",
         "title": "Redux DevTools: Copy env exports"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vitestReduxDevTools",
+          "title": "Redux DevTools",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "vitestReduxDevTools": [
+        {
+          "id": "vitestReduxDevTools.welcome",
+          "name": "Redux DevTools"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "vitestReduxDevTools.open",
+          "when": "view == vitestReduxDevTools.welcome",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "vitestReduxDevTools.welcome",
+        "contents": "[Open Panel](command:vitestReduxDevTools.open)\n\nLaunches the SocketCluster server and docks the DevTools UI in the editor area."
       }
     ],
     "configuration": {
@@ -39,20 +75,29 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node esbuild.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.webview.json && node esbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
     "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@redux-devtools/app": "8.0.0",
+    "@redux-devtools/app-core": "^3",
+    "@reduxjs/toolkit": "^2.2.0",
     "@types/node": "^20.11.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@types/vscode": "^1.90.0",
-    "esbuild": "^0.21.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "socketcluster-server": "^19.2.2",
-    "ws": "^8.18.0",
     "@types/ws": "^8.5.10",
-    "typescript": "^5.4.0"
+    "esbuild": "^0.21.0",
+    "localforage": "^1.10.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-redux": "^9",
+    "redux-persist": "^6",
+    "socketcluster-server": "^19.2.2",
+    "typescript": "^5.4.0",
+    "ws": "^8.18.0"
   }
 }

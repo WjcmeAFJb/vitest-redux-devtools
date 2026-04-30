@@ -11255,10 +11255,8 @@ function updateStatus(port) {
 function resolveWebviewAssets(context, webview) {
   const dir = vscode.Uri.joinPath(context.extensionUri, "dist", "webview");
   return {
-    reactJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, "react.production.min.js")),
-    reactDomJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, "react-dom.production.min.js")),
-    appJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, "redux-devtools-app.min.js")),
-    appCss: webview.asWebviewUri(vscode.Uri.joinPath(dir, "redux-devtools-app.min.css"))
+    appJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, "app.js")),
+    appCss: webview.asWebviewUri(vscode.Uri.joinPath(dir, "app.css"))
   };
 }
 function buildPanelHtml(webview, assets, port) {
@@ -11266,14 +11264,9 @@ function buildPanelHtml(webview, assets, port) {
   const csp = [
     `default-src 'none'`,
     `style-src ${cspSource} 'unsafe-inline'`,
-    // 'unsafe-eval' is required by the Redux DevTools UI: the Dispatcher
-    // tab runs typed JS, and action-creator strings sent over the wire are
-    // evaluated when monitors echo them back. Without it the inspector
-    // tabs that touch user-supplied code throw at mount.
+    // `unsafe-eval` is required by the Dispatcher tab (typed JS) and by
+    // action-creator string evaluation when monitors echo actions back.
     `script-src ${cspSource} 'unsafe-inline' 'unsafe-eval'`,
-    // Webview-served assets (incl. their .map siblings fetched by devtools)
-    // come from `cspSource` over https; the SC server is reachable on
-    // localhost over both http and ws.
     `connect-src ${cspSource} https: ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*`,
     `font-src ${cspSource} data:`,
     `img-src ${cspSource} data:`
@@ -11294,20 +11287,8 @@ function buildPanelHtml(webview, assets, port) {
   </head>
   <body>
     <div id="root"></div>
-    <script src="${assets.reactJs}"></script>
-    <script src="${assets.reactDomJs}"></script>
+    <script>window.__REDUX_DEVTOOLS_PORT__ = ${port};</script>
     <script src="${assets.appJs}"></script>
-    <script>
-      const container = document.querySelector('#root');
-      const element = React.createElement(ReduxDevToolsApp.Root, {
-        socketOptions: {
-          hostname: '127.0.0.1',
-          port: ${port},
-          autoReconnect: true,
-        },
-      });
-      ReactDOM.createRoot(container).render(element);
-    </script>
   </body>
 </html>`
   );
@@ -11318,12 +11299,7 @@ async function openPanel(context) {
     return;
   }
   const webviewDir = path.join(context.extensionPath, "dist", "webview");
-  const required = [
-    "react.production.min.js",
-    "react-dom.production.min.js",
-    "redux-devtools-app.min.js",
-    "redux-devtools-app.min.css"
-  ];
+  const required = ["app.js", "app.css"];
   const missing = required.filter((f) => !fs.existsSync(path.join(webviewDir, f)));
   if (missing.length > 0) {
     vscode.window.showErrorMessage(
@@ -11364,6 +11340,15 @@ async function openPanel(context) {
     }
   });
 }
+var WelcomeViewProvider = class {
+  // Empty tree → VSCode renders the `viewsWelcome` content from package.json.
+  getTreeItem() {
+    return new vscode.TreeItem("");
+  }
+  getChildren() {
+    return [];
+  }
+};
 function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand("vitestReduxDevTools.open", () => openPanel(context)),
@@ -11372,7 +11357,8 @@ function activate(context) {
       const line = `export REDUX_DEVTOOLS_HOST=127.0.0.1 REDUX_DEVTOOLS_PORT=${server.port}`;
       await vscode.env.clipboard.writeText(line);
       vscode.window.showInformationMessage(`Copied: ${line}`);
-    })
+    }),
+    vscode.window.registerTreeDataProvider("vitestReduxDevTools.welcome", new WelcomeViewProvider())
   );
 }
 function deactivate() {

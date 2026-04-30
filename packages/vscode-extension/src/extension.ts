@@ -61,8 +61,6 @@ function updateStatus(port: number) {
 }
 
 interface WebviewAssets {
-  reactJs: vscode.Uri
-  reactDomJs: vscode.Uri
   appJs: vscode.Uri
   appCss: vscode.Uri
 }
@@ -71,14 +69,10 @@ function resolveWebviewAssets(
   context: vscode.ExtensionContext,
   webview: vscode.Webview,
 ): WebviewAssets {
-  // Each UMD file is copied into `dist/webview/` by the build (see
-  // esbuild.mjs). We point the webview at those copies.
   const dir = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')
   return {
-    reactJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, 'react.production.min.js')),
-    reactDomJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, 'react-dom.production.min.js')),
-    appJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, 'redux-devtools-app.min.js')),
-    appCss: webview.asWebviewUri(vscode.Uri.joinPath(dir, 'redux-devtools-app.min.css')),
+    appJs: webview.asWebviewUri(vscode.Uri.joinPath(dir, 'app.js')),
+    appCss: webview.asWebviewUri(vscode.Uri.joinPath(dir, 'app.css')),
   }
 }
 
@@ -87,14 +81,9 @@ function buildPanelHtml(webview: vscode.Webview, assets: WebviewAssets, port: nu
   const csp = [
     `default-src 'none'`,
     `style-src ${cspSource} 'unsafe-inline'`,
-    // 'unsafe-eval' is required by the Redux DevTools UI: the Dispatcher
-    // tab runs typed JS, and action-creator strings sent over the wire are
-    // evaluated when monitors echo them back. Without it the inspector
-    // tabs that touch user-supplied code throw at mount.
+    // `unsafe-eval` is required by the Dispatcher tab (typed JS) and by
+    // action-creator string evaluation when monitors echo actions back.
     `script-src ${cspSource} 'unsafe-inline' 'unsafe-eval'`,
-    // Webview-served assets (incl. their .map siblings fetched by devtools)
-    // come from `cspSource` over https; the SC server is reachable on
-    // localhost over both http and ws.
     `connect-src ${cspSource} https: ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*`,
     `font-src ${cspSource} data:`,
     `img-src ${cspSource} data:`,
@@ -114,20 +103,8 @@ function buildPanelHtml(webview: vscode.Webview, assets: WebviewAssets, port: nu
   </head>
   <body>
     <div id="root"></div>
-    <script src="${assets.reactJs}"></script>
-    <script src="${assets.reactDomJs}"></script>
+    <script>window.__REDUX_DEVTOOLS_PORT__ = ${port};</script>
     <script src="${assets.appJs}"></script>
-    <script>
-      const container = document.querySelector('#root');
-      const element = React.createElement(ReduxDevToolsApp.Root, {
-        socketOptions: {
-          hostname: '127.0.0.1',
-          port: ${port},
-          autoReconnect: true,
-        },
-      });
-      ReactDOM.createRoot(container).render(element);
-    </script>
   </body>
 </html>`
 }
@@ -138,14 +115,8 @@ async function openPanel(context: vscode.ExtensionContext) {
     return
   }
 
-  // Verify the bundled UMD files exist before we try to render anything.
   const webviewDir = path.join(context.extensionPath, 'dist', 'webview')
-  const required = [
-    'react.production.min.js',
-    'react-dom.production.min.js',
-    'redux-devtools-app.min.js',
-    'redux-devtools-app.min.css',
-  ]
+  const required = ['app.js', 'app.css']
   const missing = required.filter((f) => !fs.existsSync(path.join(webviewDir, f)))
   if (missing.length > 0) {
     vscode.window.showErrorMessage(
@@ -190,6 +161,12 @@ async function openPanel(context: vscode.ExtensionContext) {
   })
 }
 
+class WelcomeViewProvider implements vscode.TreeDataProvider<never> {
+  // Empty tree → VSCode renders the `viewsWelcome` content from package.json.
+  getTreeItem(): vscode.TreeItem { return new vscode.TreeItem('') }
+  getChildren(): never[] { return [] }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('vitestReduxDevTools.open', () => openPanel(context)),
@@ -199,6 +176,7 @@ export function activate(context: vscode.ExtensionContext) {
       await vscode.env.clipboard.writeText(line)
       vscode.window.showInformationMessage(`Copied: ${line}`)
     }),
+    vscode.window.registerTreeDataProvider('vitestReduxDevTools.welcome', new WelcomeViewProvider()),
   )
 }
 
