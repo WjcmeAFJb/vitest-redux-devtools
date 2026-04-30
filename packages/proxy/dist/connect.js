@@ -89,6 +89,47 @@ function isProxyOwnFrame(line) {
         return true;
     return PROXY_FRAME_RE.test(line);
 }
+/**
+ * Rewrite each frame's path to `http://vrd-source/...` and load the
+ * referenced files into a sources map. The webview's custom mapper
+ * looks frames up by their absolute path, so without this the panel
+ * has no content to render around the trace.
+ *
+ * Already-rewritten frames (lines that already contain `vrd-source`)
+ * are passed through untouched and their embedded path is harvested,
+ * making this idempotent and safe to run on user-provided stacks.
+ */
+function enrichStack(stackText) {
+    const lines = stackText.split('\n');
+    const out = [];
+    const sources = {};
+    for (const line of lines) {
+        let rewrittenLine = line;
+        let fsPath;
+        const existing = line.match(EXISTING_VRD_SOURCE_RE);
+        if (existing) {
+            try {
+                fsPath = decodeURI(existing[1]);
+            }
+            catch {
+                fsPath = existing[1];
+            }
+        }
+        else {
+            const r = rewriteFramePath(line);
+            rewrittenLine = r.line;
+            fsPath = r.fsPath;
+        }
+        out.push(rewrittenLine);
+        if (fsPath && !(fsPath in sources)) {
+            const content = readSourceCached(fsPath);
+            if (content !== null)
+                sources[fsPath] = content;
+        }
+    }
+    return { stack: out.join('\n'), sources };
+}
+const EXISTING_VRD_SOURCE_RE = /http:\/\/vrd-source(\/[^\s:)]+)/;
 function captureStack(opts) {
     const { traceLimit } = opts;
     const prev = Error.stackTraceLimit;
@@ -97,8 +138,9 @@ function captureStack(opts) {
     Error.stackTraceLimit = prev;
     if (!err.stack)
         return undefined;
-    const out = [];
-    const sources = {};
+    // Strip proxy's own frames + apply user-frame budget before enriching,
+    // so we don't read source files we won't end up showing.
+    const filtered = [];
     let userCount = 0;
     let pastProxy = false;
     const lines = err.stack.split('\n');
@@ -109,21 +151,14 @@ function captureStack(opts) {
                 continue;
             pastProxy = true;
         }
-        const isInternal = NODE_MODULES_RE.test(line);
-        const { line: rewritten, fsPath } = rewriteFramePath(line);
-        out.push(rewritten);
-        if (fsPath && !(fsPath in sources)) {
-            const content = readSourceCached(fsPath);
-            if (content !== null)
-                sources[fsPath] = content;
-        }
-        if (!isInternal) {
+        filtered.push(line);
+        if (!NODE_MODULES_RE.test(line)) {
             userCount += 1;
             if (userCount >= traceLimit)
                 break;
         }
     }
-    return { stack: out.join('\n'), sources };
+    return enrichStack(filtered.join('\n'));
 }
 export function connect(opts = {}) {
     const instanceId = opts.instanceId ?? nextInstanceId();
@@ -197,10 +232,12 @@ export function connect(opts = {}) {
             // Function form: caller fully controls the stack for this action.
             // Returning `undefined`/empty disables the trace for it (matching
             // the browser extension), so we don't fall through to the default
-            // capture.
+            // capture. The returned stack still goes through `enrichStack` so
+            // each frame's source file is embedded — otherwise the webview's
+            // mapper has nothing to render previews from.
             try {
                 const stack = traceFlag(action);
-                return stack ? { stack, sources: {} } : undefined;
+                return stack ? enrichStack(stack) : undefined;
             }
             catch {
                 return undefined;
