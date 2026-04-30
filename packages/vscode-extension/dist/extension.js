@@ -11170,15 +11170,25 @@ async function startServer(port) {
   );
   void (async () => {
     for await (const { socket } of agServer.listener("connection")) {
+      let channelToEmit = "respond";
       void (async () => {
         for await (const request of socket.procedure("login")) {
           const credentials = request.data;
-          const channelToWatch = credentials === "master" ? "respond" : "log";
-          request.end(channelToWatch);
+          if (credentials === "master") {
+            channelToEmit = "log";
+            request.end("respond");
+          } else {
+            channelToEmit = "respond";
+            request.end("log");
+          }
         }
       })();
       void (async () => {
         for await (const _ of socket.listener("disconnect")) {
+          void agServer.exchange.transmitPublish(channelToEmit, {
+            id: socket.id,
+            type: "DISCONNECTED"
+          });
           const channel = agServer.exchange.channel("sc-" + socket.id);
           channel.unsubscribe();
         }

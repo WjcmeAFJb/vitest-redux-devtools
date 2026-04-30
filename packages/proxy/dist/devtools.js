@@ -1,9 +1,9 @@
 import { instrument } from '@redux-devtools/instrument';
-import { create as createSocket } from 'socketcluster-client';
+import { Worker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { stringify, parse } from 'jsan';
 const session = {
     instanceName: 'Vitest',
-    started: false,
     isMonitored: false,
     isExcess: false,
     paused: false,
@@ -11,13 +11,15 @@ const session = {
     suppressConnectErrors: true,
     errorReported: false,
 };
+function postToWorker(msg) {
+    session.worker?.postMessage(msg);
+}
 function relay(type, state, action, nextActionId) {
-    const socket = session.socket;
-    if (!socket)
+    if (!session.worker)
         return;
     const message = {
         type,
-        id: socket.id,
+        id: session.socketId ?? null,
         name: session.instanceName,
     };
     if (state !== undefined) {
@@ -31,13 +33,11 @@ function relay(type, state, action, nextActionId) {
     else if (action) {
         message.action = action;
     }
-    socket.transmit(socket.id ? 'log' : 'log-noid', message);
+    // Worker fills in `data.id` from the live socket at transmit time, so
+    // we don't need to wait for the connection here.
+    postToWorker({ kind: 'transmit', event: 'log', data: message });
 }
 function dispatchRemotely(rawAction) {
-    // The DevTools UI sends actions as either an object or a JSON-serialized
-    // string. We dispatch them directly. Function-style action evaluation
-    // (`evalAction`) is intentionally not supported here — it requires
-    // un-sandboxed `eval` of strings sent over the wire.
     const store = session.store;
     if (!store)
         return;
@@ -58,7 +58,7 @@ function handleMessage(msg) {
     switch (msg?.type) {
         case 'IMPORT':
         case 'SYNC':
-            if (session.socket?.id && msg.id !== session.socket.id) {
+            if (session.socketId && msg.id !== session.socketId) {
                 store.liftedStore.dispatch({
                     type: 'IMPORT_STATE',
                     nextLiftedState: parse(msg.state),
@@ -85,63 +85,70 @@ function handleMessage(msg) {
             break;
     }
 }
-async function startConnection(opts) {
-    const socket = createSocket({
-        hostname: opts.hostname ?? 'localhost',
-        port: opts.port ?? 8765,
-        secure: opts.secure ?? false,
-        autoReconnect: true,
-    });
-    session.socket = socket;
-    void (async () => {
-        for await (const e of socket.listener('error')) {
-            if (session.suppressConnectErrors) {
-                if (!session.errorReported) {
-                    session.errorReported = true;
-                    // eslint-disable-next-line no-console
-                    console.warn('[redux-devtools-proxy] no server reachable yet. Open the VSCode panel to connect; further errors silenced.');
-                }
-            }
-            else {
-                // eslint-disable-next-line no-console
-                console.warn('[redux-devtools-proxy] socket error:', e.error?.message ?? e);
-            }
-        }
-    })();
-    void (async () => {
-        for await (const _ of socket.listener('connect')) {
+function ensureWorker(opts) {
+    if (session.worker)
+        return;
+    // The compiled worker sits next to this file in the published package.
+    const workerPath = fileURLToPath(new URL('./worker.js', import.meta.url));
+    const worker = new Worker(workerPath);
+    session.worker = worker;
+    worker.on('message', (msg) => {
+        if (msg.kind === 'connected') {
+            session.socketId = msg.id;
             session.errorReported = false;
-            try {
-                const channelName = (await socket.invoke('login', 'master'));
-                session.channel = channelName;
-                session.started = true;
-                // Channel publishes (dispatched by other clients via the broker).
-                void (async () => {
-                    const ch = socket.subscribe(channelName);
-                    for await (const data of ch)
-                        handleMessage(data);
-                })();
-                // Direct point-to-point transmits to this socket id.
-                void (async () => {
-                    for await (const data of socket.receiver(channelName))
-                        handleMessage(data);
-                })();
-                relay('START');
-            }
-            catch (e) {
-                if (!session.suppressConnectErrors) {
-                    // eslint-disable-next-line no-console
-                    console.warn('[redux-devtools-proxy] login failed:', e?.message ?? e);
-                }
-            }
+            relay('START');
         }
-    })();
-    void (async () => {
-        for await (const _ of socket.listener('disconnect')) {
-            session.started = false;
+        else if (msg.kind === 'message') {
+            handleMessage(msg.data);
+        }
+        else if (msg.kind === 'disconnected') {
+            session.socketId = undefined;
             session.isMonitored = false;
         }
-    })();
+        else if (msg.kind === 'error') {
+            if (!session.suppressConnectErrors && !session.errorReported) {
+                session.errorReported = true;
+                // eslint-disable-next-line no-console
+                console.warn('[redux-devtools-proxy] worker error:', msg.message);
+            }
+        }
+    });
+    worker.on('error', (err) => {
+        if (!session.errorReported) {
+            session.errorReported = true;
+            // eslint-disable-next-line no-console
+            console.warn('[redux-devtools-proxy] worker thread crashed:', err.message);
+        }
+    });
+    // Detach unref so the worker doesn't keep the process alive on test exit.
+    worker.unref();
+    postToWorker({
+        kind: 'connect',
+        options: {
+            hostname: opts.hostname ?? 'localhost',
+            port: opts.port ?? 8765,
+            secure: opts.secure ?? false,
+        },
+    });
+    // Best-effort clean shutdown: tell the worker to flush + disconnect when
+    // the test process is winding down. The server's `disconnect` listener
+    // will then publish DISCONNECTED to the panel and the rerun replaces
+    // this run cleanly. If the process exits abruptly we still get the TCP
+    // RST on the server side, so the cleanup happens regardless.
+    let shutdownSent = false;
+    const shutdown = () => {
+        if (shutdownSent)
+            return;
+        shutdownSent = true;
+        try {
+            postToWorker({ kind: 'shutdown' });
+        }
+        catch {
+            // ignore
+        }
+    };
+    process.on('beforeExit', shutdown);
+    process.on('exit', shutdown);
 }
 function makeMonitorReducer() {
     return (state, action) => {
@@ -178,7 +185,7 @@ export function devToolsEnhancer(opts = {}) {
         session.store = store;
         if (realtime) {
             store.liftedStore.subscribe(() => onLiftedChange(maxAge));
-            void startConnection(opts);
+            ensureWorker(opts);
         }
         return store;
     });
@@ -188,11 +195,6 @@ export function composeWithDevTools(opts = {}) {
         const dt = devToolsEnhancer(opts);
         if (enhancers.length === 0)
             return dt;
-        // Order matters: `instrument` (inside `dt`) must be the innermost wrapper,
-        // so user enhancers (e.g. RTK's `applyMiddleware`) sit *around* it. That
-        // way middleware sees the user-facing store, not the lifted store. If we
-        // composed user enhancers *inside* `dt`, RTK's immutability-check
-        // middleware would trip on `actionsById` mutations in the lifted state.
         return ((createStore) => {
             const instrumentedCreator = dt(createStore);
             const wrapped = enhancers.reduceRight((acc, e) => e(acc), instrumentedCreator);

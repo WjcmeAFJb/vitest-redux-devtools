@@ -70,15 +70,31 @@ async function startServer(port) {
     });
     void (async () => {
         for await (const { socket } of agServer.listener('connection')) {
+            // Track which side this socket is on so that when it disconnects we
+            // can publish DISCONNECTED on the right peer's channel. Test clients
+            // (login !== 'master') emit on `respond`; monitors emit on `log`.
+            // Without this broadcast, the panel never removes the test's instance
+            // when the test process exits, so reruns pile up as ghost entries.
+            let channelToEmit = 'respond';
             void (async () => {
                 for await (const request of socket.procedure('login')) {
                     const credentials = request.data;
-                    const channelToWatch = credentials === 'master' ? 'respond' : 'log';
-                    request.end(channelToWatch);
+                    if (credentials === 'master') {
+                        channelToEmit = 'log';
+                        request.end('respond');
+                    }
+                    else {
+                        channelToEmit = 'respond';
+                        request.end('log');
+                    }
                 }
             })();
             void (async () => {
                 for await (const _ of socket.listener('disconnect')) {
+                    void agServer.exchange.transmitPublish(channelToEmit, {
+                        id: socket.id,
+                        type: 'DISCONNECTED',
+                    });
                     const channel = agServer.exchange.channel('sc-' + socket.id);
                     channel.unsubscribe();
                 }

@@ -1,7 +1,7 @@
 {
   "name": "vitest-redux-devtools",
   "displayName": "Redux DevTools (Vitest)",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Open the real Redux DevTools UI inside VSCode and connect Vitest tests to it.",
   "publisher": "local",
   "license": "MIT",
