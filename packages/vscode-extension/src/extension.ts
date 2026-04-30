@@ -109,6 +109,38 @@ function buildPanelHtml(webview: vscode.Webview, assets: WebviewAssets, port: nu
 </html>`
 }
 
+async function openInEditor(file: unknown, line: unknown, column: unknown) {
+  if (typeof file !== 'string' || !file) return
+  const ln = typeof line === 'number' && line > 0 ? Math.floor(line) - 1 : 0
+  const col = typeof column === 'number' && column > 0 ? Math.floor(column) - 1 : 0
+  try {
+    let target: vscode.Uri | undefined
+    if (file.startsWith('/') && fs.existsSync(file)) {
+      target = vscode.Uri.file(file)
+    } else if (vscode.workspace.workspaceFolders?.length) {
+      const candidates = vscode.workspace.workspaceFolders.map((w) =>
+        vscode.Uri.joinPath(w.uri, file),
+      )
+      target = candidates.find((u) => fs.existsSync(u.fsPath))
+    }
+    if (!target) {
+      vscode.window.showWarningMessage(`Redux DevTools: cannot find ${file}`)
+      return
+    }
+    const doc = await vscode.workspace.openTextDocument(target)
+    const pos = new vscode.Position(ln, col)
+    await vscode.window.showTextDocument(doc, {
+      selection: new vscode.Range(pos, pos),
+      viewColumn: vscode.ViewColumn.One,
+      preserveFocus: false,
+    })
+  } catch (err) {
+    vscode.window.showErrorMessage(
+      `Redux DevTools: failed to open ${file}: ${(err as Error).message}`,
+    )
+  }
+}
+
 async function openPanel(context: vscode.ExtensionContext) {
   if (panel) {
     panel.reveal()
@@ -149,6 +181,12 @@ async function openPanel(context: vscode.ExtensionContext) {
   const assets = resolveWebviewAssets(context, panel.webview)
   panel.webview.html = buildPanelHtml(panel.webview, assets, server.port)
   updateStatus(server.port)
+
+  panel.webview.onDidReceiveMessage((msg) => {
+    if (msg && typeof msg === 'object' && msg.type === 'vrd:openInEditor') {
+      void openInEditor(msg.file, msg.line, msg.column)
+    }
+  })
 
   panel.onDidDispose(() => {
     panel = undefined

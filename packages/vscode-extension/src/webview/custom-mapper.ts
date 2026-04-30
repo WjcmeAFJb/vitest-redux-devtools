@@ -108,6 +108,9 @@ function getLinesAround(line: number, count: number, src: string | string[]): Sc
 
 function resolveAbsPath(fileName: string | null | undefined): string | null {
   if (!fileName) return null
+  // Bare absolute path — the format the proxy emits since v0.7.9.
+  if (fileName.startsWith('/')) return fileName
+  // Legacy `http://vrd-source/<abs>` produced by older proxy versions.
   if (fileName.startsWith(SOURCE_HOST)) {
     try {
       return decodeURI(fileName.slice(SOURCE_HOST.length))

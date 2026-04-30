@@ -8047,7 +8047,7 @@ var require_range = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/classes/range.js"(exports2, module2) {
     "use strict";
     var SPACE_CHARACTERS = /\s+/g;
-    var Range = class _Range {
+    var Range2 = class _Range {
       constructor(range, options) {
         options = parseOptions(options);
         if (range instanceof _Range) {
@@ -8185,7 +8185,7 @@ var require_range = __commonJS({
         return false;
       }
     };
-    module2.exports = Range;
+    module2.exports = Range2;
     var LRU = require_lrucache();
     var cache = new LRU();
     var parseOptions = require_parse_options();
@@ -8490,12 +8490,12 @@ var require_comparator = __commonJS({
           if (this.value === "") {
             return true;
           }
-          return new Range(comp.value, options).test(this.value);
+          return new Range2(comp.value, options).test(this.value);
         } else if (comp.operator === "") {
           if (comp.value === "") {
             return true;
           }
-          return new Range(this.value, options).test(comp.semver);
+          return new Range2(this.value, options).test(comp.semver);
         }
         options = parseOptions(options);
         if (options.includePrerelease && (this.value === "<0.0.0-0" || comp.value === "<0.0.0-0")) {
@@ -8528,7 +8528,7 @@ var require_comparator = __commonJS({
     var cmp = require_cmp();
     var debug = require_debug();
     var SemVer = require_semver();
-    var Range = require_range();
+    var Range2 = require_range();
   }
 });
 
@@ -8536,10 +8536,10 @@ var require_comparator = __commonJS({
 var require_satisfies = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/functions/satisfies.js"(exports2, module2) {
     "use strict";
-    var Range = require_range();
+    var Range2 = require_range();
     var satisfies = (version, range, options) => {
       try {
-        range = new Range(range, options);
+        range = new Range2(range, options);
       } catch (er) {
         return false;
       }
@@ -8553,8 +8553,8 @@ var require_satisfies = __commonJS({
 var require_to_comparators = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/ranges/to-comparators.js"(exports2, module2) {
     "use strict";
-    var Range = require_range();
-    var toComparators = (range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
+    var Range2 = require_range();
+    var toComparators = (range, options) => new Range2(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
     module2.exports = toComparators;
   }
 });
@@ -8564,13 +8564,13 @@ var require_max_satisfying = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/ranges/max-satisfying.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var Range = require_range();
+    var Range2 = require_range();
     var maxSatisfying = (versions, range, options) => {
       let max = null;
       let maxSV = null;
       let rangeObj = null;
       try {
-        rangeObj = new Range(range, options);
+        rangeObj = new Range2(range, options);
       } catch (er) {
         return null;
       }
@@ -8593,13 +8593,13 @@ var require_min_satisfying = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/ranges/min-satisfying.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var Range = require_range();
+    var Range2 = require_range();
     var minSatisfying = (versions, range, options) => {
       let min = null;
       let minSV = null;
       let rangeObj = null;
       try {
-        rangeObj = new Range(range, options);
+        rangeObj = new Range2(range, options);
       } catch (er) {
         return null;
       }
@@ -8622,10 +8622,10 @@ var require_min_version = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/ranges/min-version.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var Range = require_range();
+    var Range2 = require_range();
     var gt = require_gt();
     var minVersion = (range, loose) => {
-      range = new Range(range, loose);
+      range = new Range2(range, loose);
       let minver = new SemVer("0.0.0");
       if (range.test(minver)) {
         return minver;
@@ -8678,10 +8678,10 @@ var require_min_version = __commonJS({
 var require_valid2 = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/ranges/valid.js"(exports2, module2) {
     "use strict";
-    var Range = require_range();
+    var Range2 = require_range();
     var validRange = (range, options) => {
       try {
-        return new Range(range, options).range || "*";
+        return new Range2(range, options).range || "*";
       } catch (er) {
         return null;
       }
@@ -8697,7 +8697,7 @@ var require_outside = __commonJS({
     var SemVer = require_semver();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
-    var Range = require_range();
+    var Range2 = require_range();
     var satisfies = require_satisfies();
     var gt = require_gt();
     var lt = require_lt();
@@ -8705,7 +8705,7 @@ var require_outside = __commonJS({
     var gte = require_gte();
     var outside = (version, range, hilo, options) => {
       version = new SemVer(version, options);
-      range = new Range(range, options);
+      range = new Range2(range, options);
       let gtfn, ltefn, ltfn, comp, ecomp;
       switch (hilo) {
         case ">":
@@ -8783,10 +8783,10 @@ var require_ltr = __commonJS({
 var require_intersects = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
-    var Range = require_range();
+    var Range2 = require_range();
     var intersects = (r1, r2, options) => {
-      r1 = new Range(r1, options);
-      r2 = new Range(r2, options);
+      r1 = new Range2(r1, options);
+      r2 = new Range2(r2, options);
       return r1.intersects(r2, options);
     };
     module2.exports = intersects;
@@ -8847,7 +8847,7 @@ var require_simplify = __commonJS({
 var require_subset = __commonJS({
   "../../node_modules/.pnpm/semver@7.7.4/node_modules/semver/ranges/subset.js"(exports2, module2) {
     "use strict";
-    var Range = require_range();
+    var Range2 = require_range();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
     var satisfies = require_satisfies();
@@ -8856,8 +8856,8 @@ var require_subset = __commonJS({
       if (sub === dom) {
         return true;
       }
-      sub = new Range(sub, options);
-      dom = new Range(dom, options);
+      sub = new Range2(sub, options);
+      dom = new Range2(dom, options);
       let sawNonNull = false;
       OUTER: for (const simpleSub of sub.set) {
         for (const simpleDom of dom.set) {
@@ -9037,7 +9037,7 @@ var require_semver2 = __commonJS({
     var cmp = require_cmp();
     var coerce = require_coerce();
     var Comparator = require_comparator();
-    var Range = require_range();
+    var Range2 = require_range();
     var satisfies = require_satisfies();
     var toComparators = require_to_comparators();
     var maxSatisfying = require_max_satisfying();
@@ -9075,7 +9075,7 @@ var require_semver2 = __commonJS({
       cmp,
       coerce,
       Comparator,
-      Range,
+      Range: Range2,
       satisfies,
       toComparators,
       maxSatisfying,
@@ -11353,6 +11353,37 @@ function buildPanelHtml(webview, assets, port) {
 </html>`
   );
 }
+async function openInEditor(file, line, column) {
+  if (typeof file !== "string" || !file) return;
+  const ln = typeof line === "number" && line > 0 ? Math.floor(line) - 1 : 0;
+  const col = typeof column === "number" && column > 0 ? Math.floor(column) - 1 : 0;
+  try {
+    let target;
+    if (file.startsWith("/") && fs2.existsSync(file)) {
+      target = vscode.Uri.file(file);
+    } else if (vscode.workspace.workspaceFolders?.length) {
+      const candidates = vscode.workspace.workspaceFolders.map(
+        (w) => vscode.Uri.joinPath(w.uri, file)
+      );
+      target = candidates.find((u) => fs2.existsSync(u.fsPath));
+    }
+    if (!target) {
+      vscode.window.showWarningMessage(`Redux DevTools: cannot find ${file}`);
+      return;
+    }
+    const doc = await vscode.workspace.openTextDocument(target);
+    const pos = new vscode.Position(ln, col);
+    await vscode.window.showTextDocument(doc, {
+      selection: new vscode.Range(pos, pos),
+      viewColumn: vscode.ViewColumn.One,
+      preserveFocus: false
+    });
+  } catch (err) {
+    vscode.window.showErrorMessage(
+      `Redux DevTools: failed to open ${file}: ${err.message}`
+    );
+  }
+}
 async function openPanel(context) {
   if (panel) {
     panel.reveal();
@@ -11390,6 +11421,11 @@ async function openPanel(context) {
   const assets = resolveWebviewAssets(context, panel.webview);
   panel.webview.html = buildPanelHtml(panel.webview, assets, server.port);
   updateStatus(server.port);
+  panel.webview.onDidReceiveMessage((msg) => {
+    if (msg && typeof msg === "object" && msg.type === "vrd:openInEditor") {
+      void openInEditor(msg.file, msg.line, msg.column);
+    }
+  });
   panel.onDidDispose(() => {
     panel = void 0;
     const cfg = vscode.workspace.getConfiguration("vitestReduxDevTools");

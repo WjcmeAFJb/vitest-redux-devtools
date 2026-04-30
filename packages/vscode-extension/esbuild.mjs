@@ -19,17 +19,25 @@ const APP_CONNECTION = resolve(appRoot, 'lib/components/Settings/Connection.js')
 // (populated by `collectSources` in the webview entry from the
 // `_vrdSources` field embedded by the proxy).
 const CUSTOM_MAPPER = resolve('src/webview/custom-mapper.ts')
-const swapMapperPlugin = {
-  name: 'swap-trace-tab-mapper',
+const CUSTOM_OPEN_FILE = resolve('src/webview/custom-open-file.ts')
+const swapTraceTabPlugin = {
+  name: 'swap-trace-tab-internals',
   setup(build) {
     build.onResolve({ filter: /(?:^|[\\/])mapper\.js$/ }, (args) => {
       if (
-        args.importer.includes(
-          'inspector-monitor-trace-tab',
-        ) &&
+        args.importer.includes('inspector-monitor-trace-tab') &&
         args.importer.includes('react-error-overlay')
       ) {
         return { path: CUSTOM_MAPPER }
+      }
+      return null
+    })
+    // The trace-tab's openFile.js is Chrome-only (chrome.devtools.panels,
+    // chrome.tabs). We swap it for a webview→host postMessage so clicks
+    // on a frame's path open the file in VSCode.
+    build.onResolve({ filter: /(?:^|[\\/])openFile\.js$/ }, (args) => {
+      if (args.importer.includes('inspector-monitor-trace-tab')) {
+        return { path: CUSTOM_OPEN_FILE }
       }
       return null
     })
@@ -78,7 +86,7 @@ await build({
     '@redux-devtools/app/configureStore': APP_CONFIGURE_STORE,
     '@redux-devtools/app/Connection': APP_CONNECTION,
   },
-  plugins: [swapMapperPlugin],
+  plugins: [swapTraceTabPlugin],
   logLevel: 'info',
 })
 

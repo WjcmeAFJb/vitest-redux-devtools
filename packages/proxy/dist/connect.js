@@ -16,9 +16,6 @@
 import { stringify } from 'jsan';
 import * as fs from 'node:fs';
 import { ensureWorker, postToWorker, registerConnectionSink, unregisterConnectionSink, } from './transport.js';
-/** Synthetic origin used in stack URLs. The webview's patched fetch
- *  intercepts these before any CSP check happens. */
-const SOURCE_PSEUDO_HOST = 'vrd-source';
 let counter = 0;
 function nextInstanceId() {
     counter += 1;
@@ -69,12 +66,11 @@ function rewriteFramePath(line) {
     const fsPath = rawPath.startsWith('file://') ? rawPath.slice('file://'.length) : rawPath;
     if (!fsPath.startsWith('/'))
         return { line };
-    // Use a synthetic host that won't be reachable on the real network —
-    // the webview intercepts fetches to it. URI-encode ':' inside the
-    // path so the trailing :L:C parses correctly downstream.
-    const encoded = encodeURI(fsPath);
+    // Strip any `file://` prefix so the line shows the bare absolute
+    // path. Both the panel's "Source"/"View compiled" toggles and the
+    // custom mapper resolve from this directly.
     return {
-        line: `${head}http://${SOURCE_PSEUDO_HOST}${encoded}:${ln}:${col}${tail}`,
+        line: `${head}${fsPath}:${ln}:${col}${tail}`,
         fsPath,
     };
 }
@@ -90,14 +86,15 @@ function isProxyOwnFrame(line) {
     return PROXY_FRAME_RE.test(line);
 }
 /**
- * Rewrite each frame's path to `http://vrd-source/...` and load the
- * referenced files into a sources map. The webview's custom mapper
- * looks frames up by their absolute path, so without this the panel
- * has no content to render around the trace.
+ * Strip `file://` prefixes from each frame and load the referenced
+ * files into a sources map. The webview's custom mapper looks frames
+ * up by their absolute path, so without this the panel has no content
+ * to render around the trace.
  *
- * Already-rewritten frames (lines that already contain `vrd-source`)
- * are passed through untouched and their embedded path is harvested,
- * making this idempotent and safe to run on user-provided stacks.
+ * Frames already containing the legacy `http://vrd-source/...` prefix
+ * (e.g. forwarded from another action's stack saved by an older
+ * proxy) are passed through untouched but still contribute to the
+ * sources map — keeps the helper idempotent and back-compatible.
  */
 function enrichStack(stackText) {
     const lines = stackText.split('\n');
@@ -106,13 +103,13 @@ function enrichStack(stackText) {
     for (const line of lines) {
         let rewrittenLine = line;
         let fsPath;
-        const existing = line.match(EXISTING_VRD_SOURCE_RE);
-        if (existing) {
+        const legacy = line.match(LEGACY_VRD_SOURCE_RE);
+        if (legacy) {
             try {
-                fsPath = decodeURI(existing[1]);
+                fsPath = decodeURI(legacy[1]);
             }
             catch {
-                fsPath = existing[1];
+                fsPath = legacy[1];
             }
         }
         else {
@@ -129,7 +126,7 @@ function enrichStack(stackText) {
     }
     return { stack: out.join('\n'), sources };
 }
-const EXISTING_VRD_SOURCE_RE = /http:\/\/vrd-source(\/[^\s:)]+)/;
+const LEGACY_VRD_SOURCE_RE = /http:\/\/vrd-source(\/[^\s:)]+)/;
 function captureStack(opts) {
     const { traceLimit } = opts;
     const prev = Error.stackTraceLimit;

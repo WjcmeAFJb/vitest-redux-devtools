@@ -23,9 +23,12 @@ import {
 } from './transport.js'
 import type { DevToolsOptions } from './devtools.js'
 
-/** Synthetic origin used in stack URLs. The webview's patched fetch
- *  intercepts these before any CSP check happens. */
-const SOURCE_PSEUDO_HOST = 'vrd-source'
+// (No path rewriting — frame paths are emitted as the original
+// absolute filesystem paths. Earlier versions wrapped each frame in
+// `http://vrd-source/<abs>:L:C` so the upstream trace-tab mapper
+// could `fetch()` source content; we now ship a fetch-free mapper +
+// custom openFile in the webview, so the prefix is unnecessary noise
+// and was visible in the panel's "View compiled" toggle.)
 
 export interface ConnectOptions extends DevToolsOptions {
   /** Display name in the panel's instance dropdown. */
@@ -151,12 +154,11 @@ function rewriteFramePath(line: string): RewriteResult {
   const [, head, rawPath, ln, col, tail] = m
   const fsPath = rawPath.startsWith('file://') ? rawPath.slice('file://'.length) : rawPath
   if (!fsPath.startsWith('/')) return { line }
-  // Use a synthetic host that won't be reachable on the real network —
-  // the webview intercepts fetches to it. URI-encode ':' inside the
-  // path so the trailing :L:C parses correctly downstream.
-  const encoded = encodeURI(fsPath)
+  // Strip any `file://` prefix so the line shows the bare absolute
+  // path. Both the panel's "Source"/"View compiled" toggles and the
+  // custom mapper resolve from this directly.
   return {
-    line: `${head}http://${SOURCE_PSEUDO_HOST}${encoded}:${ln}:${col}${tail}`,
+    line: `${head}${fsPath}:${ln}:${col}${tail}`,
     fsPath,
   }
 }
@@ -175,14 +177,15 @@ function isProxyOwnFrame(line: string): boolean {
 }
 
 /**
- * Rewrite each frame's path to `http://vrd-source/...` and load the
- * referenced files into a sources map. The webview's custom mapper
- * looks frames up by their absolute path, so without this the panel
- * has no content to render around the trace.
+ * Strip `file://` prefixes from each frame and load the referenced
+ * files into a sources map. The webview's custom mapper looks frames
+ * up by their absolute path, so without this the panel has no content
+ * to render around the trace.
  *
- * Already-rewritten frames (lines that already contain `vrd-source`)
- * are passed through untouched and their embedded path is harvested,
- * making this idempotent and safe to run on user-provided stacks.
+ * Frames already containing the legacy `http://vrd-source/...` prefix
+ * (e.g. forwarded from another action's stack saved by an older
+ * proxy) are passed through untouched but still contribute to the
+ * sources map — keeps the helper idempotent and back-compatible.
  */
 function enrichStack(stackText: string): CaptureResult {
   const lines = stackText.split('\n')
@@ -191,12 +194,12 @@ function enrichStack(stackText: string): CaptureResult {
   for (const line of lines) {
     let rewrittenLine = line
     let fsPath: string | undefined
-    const existing = line.match(EXISTING_VRD_SOURCE_RE)
-    if (existing) {
+    const legacy = line.match(LEGACY_VRD_SOURCE_RE)
+    if (legacy) {
       try {
-        fsPath = decodeURI(existing[1])
+        fsPath = decodeURI(legacy[1])
       } catch {
-        fsPath = existing[1]
+        fsPath = legacy[1]
       }
     } else {
       const r = rewriteFramePath(line)
@@ -212,7 +215,7 @@ function enrichStack(stackText: string): CaptureResult {
   return { stack: out.join('\n'), sources }
 }
 
-const EXISTING_VRD_SOURCE_RE = /http:\/\/vrd-source(\/[^\s:)]+)/
+const LEGACY_VRD_SOURCE_RE = /http:\/\/vrd-source(\/[^\s:)]+)/
 
 function captureStack(opts: CaptureOptions): CaptureResult | undefined {
   const { traceLimit } = opts
