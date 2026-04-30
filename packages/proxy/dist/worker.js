@@ -49,6 +49,17 @@ function setupSocket(s) {
                         send({ kind: 'message', data });
                     }
                 })();
+                // The panel emits targeted DISPATCH (time-travel, JUMP_TO_ACTION,
+                // etc) on `sc-<our-id>`. Under SC v14 the legacy `socket.on(name)`
+                // path picked these up implicitly; SC v20+ requires an explicit
+                // subscription to the per-socket private channel.
+                if (s.id) {
+                    void (async () => {
+                        const privateCh = s.subscribe(`sc-${s.id}`);
+                        for await (const data of privateCh)
+                            send({ kind: 'message', data });
+                    })();
+                }
             }
             catch (e) {
                 send({ kind: 'error', message: e?.message ?? String(e) });
