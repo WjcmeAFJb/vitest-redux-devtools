@@ -87,7 +87,11 @@ function buildPanelHtml(webview: vscode.Webview, assets: WebviewAssets, port: nu
   const csp = [
     `default-src 'none'`,
     `style-src ${cspSource} 'unsafe-inline'`,
-    `script-src ${cspSource} 'unsafe-inline'`,
+    // 'unsafe-eval' is required by the Redux DevTools UI: the Dispatcher
+    // tab runs typed JS, and action-creator strings sent over the wire are
+    // evaluated when monitors echo them back. Without it the inspector
+    // tabs that touch user-supplied code throw at mount.
+    `script-src ${cspSource} 'unsafe-inline' 'unsafe-eval'`,
     // Webview-served assets (incl. their .map siblings fetched by devtools)
     // come from `cspSource` over https; the SC server is reachable on
     // localhost over both http and ws.
