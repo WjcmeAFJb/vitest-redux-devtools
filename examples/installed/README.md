@@ -1,7 +1,8 @@
 # installed example
 
-A standalone pnpm project that consumes `@vitest-redux-devtools/proxy` from a
-release tarball — exactly the way an external user would.
+A standalone pnpm project that consumes `@vitest-redux-devtools/proxy`
+directly from the GitHub release tarball — exactly the way an external
+user would.
 
 ## Setup
 
@@ -10,25 +11,22 @@ release tarball — exactly the way an external user would.
 pnpm install --ignore-workspace
 ```
 
-The `--ignore-workspace` flag tells pnpm to treat this directory as an
-isolated project rather than a workspace member of the parent monorepo —
-that's required so it actually installs the proxy from the tarball
-instead of symlinking to `packages/proxy/`. If you copy this example out
-of the monorepo, plain `pnpm install` works.
-
-`pnpm install` will fetch the proxy from the local release tarball at
-`../../releases/v0.1.0/vitest-redux-devtools-proxy-0.1.0.tgz`. To consume
-the package from a real release, replace the `file:` path in
-`package.json` with a URL:
-
-```json
-"@vitest-redux-devtools/proxy": "https://github.com/<owner>/<repo>/releases/download/v0.1.0/vitest-redux-devtools-proxy-0.1.0.tgz"
-```
+`pnpm install` fetches the proxy from
+<https://github.com/WjcmeAFJb/vitest-redux-devtools/releases/download/v0.1.0/vitest-redux-devtools-proxy-0.1.0.tgz>.
+The `--ignore-workspace` flag is only needed because this folder lives
+inside the monorepo; if you copy this example out of the monorepo, plain
+`pnpm install` works.
 
 ## Install the VSCode extension
 
-In VSCode: `Cmd-Shift-P` → **Extensions: Install from VSIX…** →
-pick `../../releases/v0.1.0/vitest-redux-devtools-0.1.0.vsix`.
+```bash
+curl -L -o /tmp/vitest-redux-devtools.vsix \
+  https://github.com/WjcmeAFJb/vitest-redux-devtools/releases/download/v0.1.0/vitest-redux-devtools-0.1.0.vsix
+code --install-extension /tmp/vitest-redux-devtools.vsix
+```
+
+Or in VSCode: `Cmd-Shift-P` → **Extensions: Install from VSIX…** →
+pick the downloaded file.
 
 Then `Cmd-Shift-P` → **Redux DevTools: Open Panel** to start the server
 and open the UI.
