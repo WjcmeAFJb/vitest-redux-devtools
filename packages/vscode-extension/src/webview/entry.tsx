@@ -75,9 +75,10 @@ globalThis.fetch = function patchedFetch(input: any, init?: any) {
   return origFetch(input, init)
 }
 
-/** Walks `state.instances.states[*].actionsById[*].action._vrdSources`
- *  on every store change, accumulating into `sourcesMap`. Subscribed
- *  once after the store mounts (see below). */
+/** Walks `state.instances.states[*].actionsById[*]._vrdSources` on every
+ *  store change, accumulating into `sourcesMap`. The `_vrdSources` field
+ *  is at the lifted-action level (alongside `type:'PERFORM_ACTION'`,
+ *  `stack`, `timestamp`), not nested under `.action`. */
 function collectSources(state: any) {
   const states = state?.instances?.states
   if (!states) return
@@ -85,7 +86,7 @@ function collectSources(state: any) {
     const byId = inst?.actionsById
     if (!byId) continue
     for (const lifted of Object.values<any>(byId)) {
-      const sources = lifted?.action?._vrdSources
+      const sources = lifted?._vrdSources ?? lifted?.action?._vrdSources
       if (!sources) continue
       for (const [k, v] of Object.entries(sources)) {
         if (typeof v === 'string') sourcesMap.set(k, v)
