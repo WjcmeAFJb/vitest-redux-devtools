@@ -12,6 +12,30 @@ const appRoot = dirname(appPkgJson)
 const APP_CONFIGURE_STORE = resolve(appRoot, 'lib/store/configureStore.js')
 const APP_CONNECTION = resolve(appRoot, 'lib/components/Settings/Connection.js')
 
+// The trace-tab's mapper.js fetches each frame's source URL and parses
+// a sourcemap. VSCodium's webview CSP blocks all fetches regardless of
+// our meta CSP, so previews never render. We swap in a fetch-free
+// drop-in that pulls source content out of `globalThis.__VRD_SOURCES__`
+// (populated by `collectSources` in the webview entry from the
+// `_vrdSources` field embedded by the proxy).
+const CUSTOM_MAPPER = resolve('src/webview/custom-mapper.ts')
+const swapMapperPlugin = {
+  name: 'swap-trace-tab-mapper',
+  setup(build) {
+    build.onResolve({ filter: /(?:^|[\\/])mapper\.js$/ }, (args) => {
+      if (
+        args.importer.includes(
+          'inspector-monitor-trace-tab',
+        ) &&
+        args.importer.includes('react-error-overlay')
+      ) {
+        return { path: CUSTOM_MAPPER }
+      }
+      return null
+    })
+  },
+}
+
 // Extension host bundle (Node).
 await build({
   entryPoints: ['src/extension.ts'],
@@ -54,6 +78,7 @@ await build({
     '@redux-devtools/app/configureStore': APP_CONFIGURE_STORE,
     '@redux-devtools/app/Connection': APP_CONNECTION,
   },
+  plugins: [swapMapperPlugin],
   logLevel: 'info',
 })
 
