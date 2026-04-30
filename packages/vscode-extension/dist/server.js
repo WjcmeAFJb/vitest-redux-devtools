@@ -35,6 +35,11 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startServer = startServer;
 const http = __importStar(require("node:http"));
+// `socketcluster-server` does `require(opts.wsEngine)` at runtime, which
+// esbuild can't follow. Importing `ws` here forces esbuild to bundle it,
+// and we pass the module object directly as `wsEngine` so SC never falls
+// back to the dynamic require.
+const ws = __importStar(require("ws"));
 async function startServer(port) {
     // socketcluster-server is ESM-only; esbuild bundles it into the extension
     // CJS output. Use dynamic import to avoid require()-ing an ESM module.
@@ -44,6 +49,7 @@ async function startServer(port) {
     const httpServer = http.createServer();
     const agServer = socketClusterServer.attach(httpServer, {
         allowClientPublish: false,
+        wsEngine: ws,
     });
     agServer.setMiddleware(agServer.MIDDLEWARE_INBOUND, async (middlewareStream) => {
         for await (const action of middlewareStream) {

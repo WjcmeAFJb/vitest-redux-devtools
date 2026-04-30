@@ -55,6 +55,9 @@ importers:
       '@types/vscode':
         specifier: ^1.90.0
         version: 1.118.0
+      '@types/ws':
+        specifier: ^8.5.10
+        version: 8.18.1
       esbuild:
         specifier: ^0.21.0
         version: 0.21.5
@@ -70,6 +73,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
 
 packages:
 
@@ -803,6 +809,9 @@ packages:
 
   '@types/vscode@1.118.0':
     resolution: {integrity: sha512-Ah6eTlqDcwIMELEVwQMO++rJAFBRz/oLluLD/vWdYrH1KuI9kfpaM+7pg0OvvascgcJy+ghLCERAYouM4QbzGw==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@vitest/expect@1.6.1':
     resolution: {integrity: sha512-jXL+9+ZNIJKruofqXuuTClf44eSpcHlgj3CiuNihUF3Ioujtmc0zIa3UJOW5RjDK1YLBJZnWBlPuqhYycLioog==}
@@ -2652,6 +2661,10 @@ snapshots:
   '@types/use-sync-external-store@0.0.6': {}
 
   '@types/vscode@1.118.0': {}
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 20.19.39
 
   '@vitest/expect@1.6.1':
     dependencies:
