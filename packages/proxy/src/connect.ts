@@ -83,8 +83,6 @@ export function connect(opts: ConnectOptions = {}): DevToolsConnection {
     })
   }
 
-  let actionId = 0
-
   return {
     instanceId,
     init(state, action) {
@@ -96,12 +94,16 @@ export function connect(opts: ConnectOptions = {}): DevToolsConnection {
     },
     send(action, state) {
       const liftedAction = typeof action === 'string' ? { type: action } : action
-      actionId += 1
+      // Don't send `nextActionId` — the panel's instances reducer auto-
+      // increments from the previous lifted state via
+      // `request.nextActionId || liftedState.nextActionId + 1`. Sending
+      // a value of 1 for the first send collides with INIT's actionId 0
+      // (both compute to `nextActionId - 1`), which the panel then
+      // renders as two action-list rows targeting the same slot.
       transmit({
         type: 'ACTION',
         action: stringify({ type: 'PERFORM_ACTION', action: liftedAction, timestamp: Date.now() }),
         payload: stringify(state),
-        nextActionId: actionId,
       })
     },
     subscribe(listener) {
