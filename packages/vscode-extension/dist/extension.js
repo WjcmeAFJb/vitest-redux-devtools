@@ -11145,6 +11145,20 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 
 // src/server.ts
 var wsEngine = { Server: import_websocket_server.default };
+function buildIdentityMapDataUrl(fsPath, contents) {
+  const lineCount = contents.split("\n").length;
+  const mappings = lineCount === 0 ? "" : "AAAA" + ";AACA".repeat(Math.max(0, lineCount - 1));
+  const map = {
+    version: 3,
+    file: path.basename(fsPath),
+    sources: [fsPath],
+    sourcesContent: [contents],
+    names: [],
+    mappings
+  };
+  const b64 = Buffer.from(JSON.stringify(map), "utf8").toString("base64");
+  return `data:application/json;charset=utf-8;base64,${b64}`;
+}
 async function startServer(port) {
   const scsModule = await Promise.resolve().then(() => __toESM(require_socketcluster_server()));
   const socketClusterServer = scsModule.default ?? scsModule;
@@ -11164,9 +11178,14 @@ async function startServer(port) {
       return;
     }
     try {
-      const data = await fs.readFile(fsPath, "utf8");
+      let data = await fs.readFile(fsPath, "utf8");
       const ext = path.extname(fsPath);
-      const mime = ext === ".map" ? "application/json" : ext === ".css" ? "text/css" : "text/plain; charset=utf-8";
+      const isCode = /^\.(?:[mc]?[jt]sx?|css)$/.test(ext);
+      const isMap = ext === ".map";
+      const mime = isMap ? "application/json" : ext === ".css" ? "text/css" : "text/plain; charset=utf-8";
+      if (isCode && !isMap && !/\/\/[#@] ?sourceMappingURL=/.test(data)) {
+        data += "\n//# sourceMappingURL=" + buildIdentityMapDataUrl(fsPath, data);
+      }
       res.writeHead(200, {
         "content-type": mime,
         "access-control-allow-origin": "*",
