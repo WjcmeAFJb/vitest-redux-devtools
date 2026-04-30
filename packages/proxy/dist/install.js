@@ -15,7 +15,7 @@
  * `globalThis.window = globalThis` if no `window` is defined (RTK does a
  * literal `typeof window !== 'undefined'` check).
  */
-import { composeWithDevTools, devToolsEnhancer, connect } from './index.js';
+import { composeWithDevTools, devToolsEnhancer, connect, update } from './index.js';
 const g = globalThis;
 if (typeof g.window === 'undefined') {
     g.window = g;
@@ -34,5 +34,15 @@ if (!target.__REDUX_DEVTOOLS_EXTENSION__) {
         // cleanup should call `connection.disconnect()` on the instance.
     };
     target.__REDUX_DEVTOOLS_EXTENSION__ = fn;
+}
+// Synchronous drain hook for debugger-paused execution. Type into the
+// debug console while parked at a breakpoint to pull queued time-travel
+// commands (DISPATCH/JUMP) into the test thread and fire any registered
+// `connection.subscribe()` listeners synchronously.
+target.__REDUX_DEVTOOLS_UPDATE__ = update;
+if (target.update === undefined) {
+    // Convenience alias for typing in a debug console. Skipped if `update`
+    // is already defined globally (don't shadow user-land helpers).
+    target.update = update;
 }
 //# sourceMappingURL=install.js.map

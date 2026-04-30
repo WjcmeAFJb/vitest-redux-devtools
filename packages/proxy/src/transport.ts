@@ -3,23 +3,28 @@
  * (`devtools.ts`) and the `connect()` API (`connect.ts`) post through
  * here so a single SocketCluster connection backs all of them.
  */
-import { Worker } from 'node:worker_threads'
+import { Worker, MessageChannel, receiveMessageOnPort, type MessagePort } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
 import type { DevToolsOptions } from './devtools.js'
 
 type WorkerInMessage =
   | { kind: 'connect'; options: { hostname: string; port: number; secure?: boolean } }
+  | { kind: 'sync-port'; port: MessagePort }
   | { kind: 'transmit'; event: string; data: unknown }
   | { kind: 'shutdown' }
 
 type WorkerOutMessage =
   | { kind: 'connected'; id: string }
-  | { kind: 'message'; data: any }
+  | { kind: 'wake' }
   | { kind: 'disconnected' }
   | { kind: 'error'; message: string }
 
+type DrainableMessage =
+  | { kind: 'message'; data: any }
+
 interface TransportState {
   worker?: Worker
+  syncPort?: MessagePort
   socketId?: string
   errorReported: boolean
   suppressConnectErrors: boolean
@@ -80,8 +85,8 @@ export function ensureWorker(opts: DevToolsOptions) {
       state.socketId = msg.id
       state.errorReported = false
       connectedListeners.forEach((l) => l(msg.id))
-    } else if (msg.kind === 'message') {
-      route(msg.data)
+    } else if (msg.kind === 'wake') {
+      drainSync()
     } else if (msg.kind === 'disconnected') {
       state.socketId = undefined
     } else if (msg.kind === 'error') {
@@ -102,6 +107,15 @@ export function ensureWorker(opts: DevToolsOptions) {
   })
 
   worker.unref()
+
+  // Set up the synchronous drain port. The worker writes every panel
+  // message to this port; the main thread can pull them off via
+  // `receiveMessageOnPort`, which works even when the event loop is
+  // parked on a debugger breakpoint. This is what makes the
+  // `__REDUX_DEVTOOLS_UPDATE__()` debug-console hook work.
+  const channel = new MessageChannel()
+  state.syncPort = channel.port1
+  worker.postMessage({ kind: 'sync-port', port: channel.port2 }, [channel.port2])
 
   postToWorker({
     kind: 'connect',
@@ -124,6 +138,31 @@ export function ensureWorker(opts: DevToolsOptions) {
   }
   process.on('beforeExit', shutdown)
   process.on('exit', shutdown)
+}
+
+/**
+ * Synchronously pulls every pending DevTools event off the worker's sync
+ * port and routes it to the appropriate sink. Safe to call from a
+ * debugger console while the event loop is parked — it doesn't yield.
+ *
+ * Both the wake-event-driven path and the user-callable
+ * `__REDUX_DEVTOOLS_UPDATE__()` route through here, so messages aren't
+ * processed twice.
+ */
+export function drainSync(): number {
+  const port = state.syncPort
+  if (!port) return 0
+  let count = 0
+  while (true) {
+    const next = receiveMessageOnPort(port)
+    if (!next) break
+    const msg = next.message as DrainableMessage
+    if (msg.kind === 'message') {
+      route(msg.data)
+      count += 1
+    }
+  }
+  return count
 }
 
 function route(msg: any) {

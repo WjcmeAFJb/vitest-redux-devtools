@@ -7,6 +7,7 @@
  */
 import { parentPort } from 'node:worker_threads';
 import { create as createSocket } from 'socketcluster-client';
+let syncPort;
 if (!parentPort) {
     throw new Error('proxy worker must be spawned via worker_threads');
 }
@@ -29,6 +30,16 @@ function flushPending() {
 function send(msg) {
     port.postMessage(msg);
 }
+/**
+ * Push a panel-originated message to the main thread. Goes via the sync
+ * port (drained by `receiveMessageOnPort`) for the synchronous debug-
+ * console path AND a 'wake' notification on parentPort so the normal
+ * async listener also picks it up.
+ */
+function deliver(data) {
+    syncPort?.postMessage({ kind: 'message', data });
+    port.postMessage({ kind: 'wake' });
+}
 function setupSocket(s) {
     void (async () => {
         for await (const _ of s.listener('connect')) {
@@ -41,12 +52,12 @@ function setupSocket(s) {
                 void (async () => {
                     const ch = s.subscribe(channel);
                     for await (const data of ch)
-                        send({ kind: 'message', data });
+                        deliver(data);
                 })();
                 // Direct receives addressed by name (legacy SC routing).
                 void (async () => {
                     for await (const data of s.receiver(channel)) {
-                        send({ kind: 'message', data });
+                        deliver(data);
                     }
                 })();
                 // The panel emits targeted DISPATCH (time-travel, JUMP_TO_ACTION,
@@ -57,7 +68,7 @@ function setupSocket(s) {
                     void (async () => {
                         const privateCh = s.subscribe(`sc-${s.id}`);
                         for await (const data of privateCh)
-                            send({ kind: 'message', data });
+                            deliver(data);
                     })();
                 }
             }
@@ -80,6 +91,10 @@ function setupSocket(s) {
     })();
 }
 port.on('message', (msg) => {
+    if (msg.kind === 'sync-port') {
+        syncPort = msg.port;
+        return;
+    }
     if (msg.kind === 'connect') {
         socket = createSocket({
             hostname: msg.options.hostname,

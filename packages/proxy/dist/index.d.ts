@@ -10,6 +10,22 @@
 import { type DevToolsOptions } from './devtools.js';
 import { type ConnectOptions, type DevToolsConnection } from './connect.js';
 export type { DevToolsOptions, ConnectOptions, DevToolsConnection };
+/**
+ * Synchronously pull every pending DevTools event from the worker and
+ * dispatch to listeners (Redux instrument, `connect()` subscribers).
+ * Safe to call from a debugger console while the test is paused — it
+ * uses `worker_threads.receiveMessageOnPort()` which doesn't yield to
+ * the event loop.
+ *
+ * Exposed at runtime as `globalThis.__REDUX_DEVTOOLS_UPDATE__()` (and as
+ * `globalThis.update()` for shorter typing in the debug console). When
+ * the test isn't paused, the worker's wake notification triggers the
+ * same drain automatically, so calling this is only useful during a
+ * pause.
+ *
+ * Returns the number of events drained.
+ */
+export declare function update(): number;
 export declare function composeWithDevTools(opts?: DevToolsOptions): (...enhancers: import("redux").StoreEnhancer[]) => import("redux").StoreEnhancer;
 export declare function devToolsEnhancer(opts?: DevToolsOptions): import("redux").StoreEnhancer;
 /**

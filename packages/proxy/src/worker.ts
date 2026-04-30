@@ -5,12 +5,16 @@
  * breakpoint. The main thread never touches the network directly — it
  * just `postMessage`s structured-cloned action payloads here.
  */
-import { parentPort } from 'node:worker_threads'
+import { parentPort, type MessagePort } from 'node:worker_threads'
 import { create as createSocket, type AGClientSocket } from 'socketcluster-client'
 
 interface ConnectMessage {
   kind: 'connect'
   options: { hostname: string; port: number; secure?: boolean }
+}
+interface SyncPortMessage {
+  kind: 'sync-port'
+  port: MessagePort
 }
 interface TransmitMessage {
   kind: 'transmit'
@@ -20,13 +24,15 @@ interface TransmitMessage {
 interface ShutdownMessage {
   kind: 'shutdown'
 }
-type InMessage = ConnectMessage | TransmitMessage | ShutdownMessage
+type InMessage = ConnectMessage | SyncPortMessage | TransmitMessage | ShutdownMessage
 
 type OutMessage =
   | { kind: 'connected'; id: string }
-  | { kind: 'message'; data: unknown }
+  | { kind: 'wake' }
   | { kind: 'disconnected' }
   | { kind: 'error'; message: string }
+
+let syncPort: MessagePort | undefined
 
 if (!parentPort) {
   throw new Error('proxy worker must be spawned via worker_threads')
@@ -53,6 +59,17 @@ function send(msg: OutMessage) {
   port.postMessage(msg)
 }
 
+/**
+ * Push a panel-originated message to the main thread. Goes via the sync
+ * port (drained by `receiveMessageOnPort`) for the synchronous debug-
+ * console path AND a 'wake' notification on parentPort so the normal
+ * async listener also picks it up.
+ */
+function deliver(data: unknown) {
+  syncPort?.postMessage({ kind: 'message', data })
+  port.postMessage({ kind: 'wake' } as OutMessage)
+}
+
 function setupSocket(s: AGClientSocket) {
   void (async () => {
     for await (const _ of s.listener('connect')) {
@@ -64,12 +81,12 @@ function setupSocket(s: AGClientSocket) {
         // Channel publishes (broadcast from server middleware).
         void (async () => {
           const ch = s.subscribe(channel!)
-          for await (const data of ch) send({ kind: 'message', data })
+          for await (const data of ch) deliver(data)
         })()
         // Direct receives addressed by name (legacy SC routing).
         void (async () => {
           for await (const data of s.receiver(channel!)) {
-            send({ kind: 'message', data })
+            deliver(data)
           }
         })()
         // The panel emits targeted DISPATCH (time-travel, JUMP_TO_ACTION,
@@ -79,7 +96,7 @@ function setupSocket(s: AGClientSocket) {
         if (s.id) {
           void (async () => {
             const privateCh = s.subscribe(`sc-${s.id}`)
-            for await (const data of privateCh) send({ kind: 'message', data })
+            for await (const data of privateCh) deliver(data)
           })()
         }
       } catch (e) {
@@ -102,6 +119,10 @@ function setupSocket(s: AGClientSocket) {
 }
 
 port.on('message', (msg: InMessage) => {
+  if (msg.kind === 'sync-port') {
+    syncPort = msg.port
+    return
+  }
   if (msg.kind === 'connect') {
     socket = createSocket({
       hostname: msg.options.hostname,
