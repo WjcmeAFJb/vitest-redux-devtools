@@ -88,7 +88,10 @@ function buildPanelHtml(webview: vscode.Webview, assets: WebviewAssets, port: nu
     `default-src 'none'`,
     `style-src ${cspSource} 'unsafe-inline'`,
     `script-src ${cspSource} 'unsafe-inline'`,
-    `connect-src ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*`,
+    // Webview-served assets (incl. their .map siblings fetched by devtools)
+    // come from `cspSource` over https; the SC server is reachable on
+    // localhost over both http and ws.
+    `connect-src ${cspSource} https: ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*`,
     `font-src ${cspSource} data:`,
     `img-src ${cspSource} data:`,
   ].join('; ')
