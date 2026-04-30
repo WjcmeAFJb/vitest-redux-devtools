@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.2.0",
-    "@vitest-redux-devtools/proxy": "https://github.com/WjcmeAFJb/vitest-redux-devtools/releases/download/v0.3.0/vitest-redux-devtools-proxy-0.3.0.tgz"
+    "@vitest-redux-devtools/proxy": "https://github.com/WjcmeAFJb/vitest-redux-devtools/releases/download/v0.4.0/vitest-redux-devtools-proxy-0.4.0.tgz"
   },
   "devDependencies": {
     "vitest": "^1.6.0"

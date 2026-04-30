@@ -6,7 +6,6 @@ export interface DevToolsOptions {
     name?: string;
     realtime?: boolean;
     maxAge?: number;
-    /** Suppress noisy connection-error logging when no server is listening. Default true. */
     suppressConnectErrors?: boolean;
 }
 export declare function devToolsEnhancer(opts?: DevToolsOptions): StoreEnhancer;
