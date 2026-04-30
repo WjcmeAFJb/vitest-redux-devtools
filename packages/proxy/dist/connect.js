@@ -78,12 +78,16 @@ function rewriteFramePath(line) {
         fsPath,
     };
 }
+// Match both `dist/connect.js` (runtime) and `src/connect.ts` (source-
+// mapped) layouts, in both the workspace and the pnpm/npm installed
+// paths. V8's `--enable-source-maps` (default in Node 14+) rewrites the
+// runtime path to the original source, which is why we have to handle
+// .ts and .js + src and dist symmetrically.
+const PROXY_FRAME_RE = /(?:@vitest-redux-devtools[\\/]proxy|packages[\\/]proxy)[\\/](?:src|dist)[\\/](?:connect|devtools|transport|worker|index|install)\.[jt]s/;
 function isProxyOwnFrame(line) {
     if (PROXY_DIR && line.includes(PROXY_DIR))
         return true;
-    // Fallback by file basename in case PROXY_DIR resolution failed.
-    return /[\\/](?:connect|devtools|transport|worker|index|install)\.js[:)]/.test(line) &&
-        /vitest-redux-devtools[\\/]?proxy|packages[\\/]proxy/.test(line);
+    return PROXY_FRAME_RE.test(line);
 }
 function captureStack(opts) {
     const { traceLimit } = opts;
