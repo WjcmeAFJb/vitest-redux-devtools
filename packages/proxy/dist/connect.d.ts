@@ -10,28 +10,47 @@ export interface ConnectOptions extends DevToolsOptions {
      * false if you want the previous run's history to linger.
      */
     cleanupOnDisconnect?: boolean;
+    /**
+     * Hint to the panel about the lib backing this connection. Currently
+     * just stored on the panel's instance options for display/UX.
+     */
+    type?: string;
+    /**
+     * Use jsan-style `__serializedType__` wrapping. When true, the panel
+     * runs its reviver and renders tagged objects as type-aware
+     * collapsibles instead of literal `__serializedType__`/`data`
+     * properties. mobx-auto-devtools and similar integrations rely on
+     * this.
+     */
+    serialize?: boolean;
+    /**
+     * Capture a sync stack trace at every `send()` call site. Disabled by
+     * default to keep the wire small. When enabled, the panel's "Trace"
+     * inspector tab gets a stack for each action.
+     */
+    trace?: boolean | ((...args: unknown[]) => string | undefined);
+    /** Limit on captured stack frames. Default 10. */
+    traceLimit?: number;
+    /** History ring size; replayed when a new panel attaches. Default 50. */
+    maxAge?: number;
+    /** Action creators reflected in the panel's "Dispatch" tab. */
+    actionCreators?: unknown;
+    /** Feature flags reflected in panel buttons. */
+    features?: Record<string, boolean>;
 }
 export type ActionLike = string | {
     type: string;
     [k: string]: unknown;
 };
 export interface DevToolsConnection {
-    /** Push the initial state. Call once before any `send`. */
     init(state: unknown, action?: ActionLike): void;
-    /** Push an action + the resulting state. */
     send(action: ActionLike, state: unknown): void;
-    /** Subscribe to messages from the panel (DISPATCH / JUMP / etc). */
     subscribe(listener: (msg: any) => void): () => void;
-    /** Unsubscribe all listeners on this connection. */
     unsubscribe(): void;
-    /** Tear down the connection and tell the panel to forget it. */
     disconnect(): void;
-    /** Report an error to the panel. */
     error(message: string): void;
-    /** The instance id used in panel routing. Stable for this connection. */
     readonly instanceId: string;
 }
 export declare function connect(opts?: ConnectOptions): DevToolsConnection;
-/** Disconnect every active connection. */
 export declare function disconnectAll(): void;
 //# sourceMappingURL=connect.d.ts.map

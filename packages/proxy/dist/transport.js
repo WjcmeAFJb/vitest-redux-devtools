@@ -129,16 +129,26 @@ export function drainSync() {
 }
 function route(msg) {
     // Panel-issued messages may be targeted at a specific instance via
-    // `instanceId`. If they are, deliver only to that connection's
-    // subscribers. Otherwise, fall through to the default (Redux enhancer)
-    // handler.
-    if (msg && typeof msg === 'object' && 'instanceId' in msg) {
+    // `instanceId`. If so, deliver only to that connection's subscribers.
+    // Otherwise it's a broadcast (typically START / STOP / DISCONNECTED on
+    // panel attach) — deliver to *every* connection plus the default
+    // (Redux enhancer) sink. Connections need broadcast START to know to
+    // replay their history to a freshly-attached panel.
+    if (msg && typeof msg === 'object' && 'instanceId' in msg && msg.instanceId) {
         const sink = connectionSinks.get(msg.instanceId);
         if (sink) {
             sink(msg);
             return;
         }
     }
+    connectionSinks.forEach((sink) => {
+        try {
+            sink(msg);
+        }
+        catch {
+            // ignore; one bad sink shouldn't poison the broadcast
+        }
+    });
     defaultSink?.(msg);
 }
 //# sourceMappingURL=transport.js.map

@@ -14,7 +14,12 @@
  * multiple stores can coexist in the panel's instance dropdown.
  */
 import { stringify } from 'jsan'
-import { ensureWorker, postToWorker, registerConnectionSink, unregisterConnectionSink } from './transport.js'
+import {
+  ensureWorker,
+  postToWorker,
+  registerConnectionSink,
+  unregisterConnectionSink,
+} from './transport.js'
 import type { DevToolsOptions } from './devtools.js'
 
 export interface ConnectOptions extends DevToolsOptions {
@@ -28,24 +33,44 @@ export interface ConnectOptions extends DevToolsOptions {
    * false if you want the previous run's history to linger.
    */
   cleanupOnDisconnect?: boolean
+  /**
+   * Hint to the panel about the lib backing this connection. Currently
+   * just stored on the panel's instance options for display/UX.
+   */
+  type?: string
+  /**
+   * Use jsan-style `__serializedType__` wrapping. When true, the panel
+   * runs its reviver and renders tagged objects as type-aware
+   * collapsibles instead of literal `__serializedType__`/`data`
+   * properties. mobx-auto-devtools and similar integrations rely on
+   * this.
+   */
+  serialize?: boolean
+  /**
+   * Capture a sync stack trace at every `send()` call site. Disabled by
+   * default to keep the wire small. When enabled, the panel's "Trace"
+   * inspector tab gets a stack for each action.
+   */
+  trace?: boolean | ((...args: unknown[]) => string | undefined)
+  /** Limit on captured stack frames. Default 10. */
+  traceLimit?: number
+  /** History ring size; replayed when a new panel attaches. Default 50. */
+  maxAge?: number
+  /** Action creators reflected in the panel's "Dispatch" tab. */
+  actionCreators?: unknown
+  /** Feature flags reflected in panel buttons. */
+  features?: Record<string, boolean>
 }
 
 export type ActionLike = string | { type: string; [k: string]: unknown }
 
 export interface DevToolsConnection {
-  /** Push the initial state. Call once before any `send`. */
   init(state: unknown, action?: ActionLike): void
-  /** Push an action + the resulting state. */
   send(action: ActionLike, state: unknown): void
-  /** Subscribe to messages from the panel (DISPATCH / JUMP / etc). */
   subscribe(listener: (msg: any) => void): () => void
-  /** Unsubscribe all listeners on this connection. */
   unsubscribe(): void
-  /** Tear down the connection and tell the panel to forget it. */
   disconnect(): void
-  /** Report an error to the panel. */
   error(message: string): void
-  /** The instance id used in panel routing. Stable for this connection. */
   readonly instanceId: string
 }
 
@@ -56,26 +81,79 @@ function nextInstanceId(): string {
   return `vrd-${pid}-${counter}`
 }
 
+function captureStack(traceLimit: number): string | undefined {
+  const prev = Error.stackTraceLimit
+  Error.stackTraceLimit = traceLimit + 4
+  const err = new Error()
+  // Strip the proxy's own frames so the user sees their call site at the
+  // top. Lines 0-3 are typically: "Error", captureStack, send, transmit.
+  const frames = err.stack?.split('\n').slice(4).join('\n')
+  Error.stackTraceLimit = prev
+  return frames
+}
+
 export function connect(opts: ConnectOptions = {}): DevToolsConnection {
   const instanceId = opts.instanceId ?? nextInstanceId()
   const name = opts.name ?? instanceId
   const cleanupOnDisconnect = opts.cleanupOnDisconnect ?? true
+  const traceLimit = opts.traceLimit ?? 10
+  const traceFlag = opts.trace ?? false
+  const maxBufferSize = opts.maxAge ?? 50
 
-  // Spin up the worker on first connect (idempotent).
+  // libConfig is what the panel's instances reducer reads from each INIT
+  // request to populate `options[instanceId]`. The crucial field is
+  // `serialize` — without it, `parseJSON` skips the reviver and tagged
+  // objects render as literal `{ __serializedType__, data }` shapes.
+  const libConfig = {
+    name,
+    type: opts.type ?? 'redux',
+    serialize: opts.serialize ?? false,
+    features: opts.features,
+    actionCreators: opts.actionCreators,
+  }
+
   ensureWorker(opts)
+
+  // Per-connection history. Replayed when a new panel attaches and
+  // broadcasts START so users see prior actions in a mid-test reopen.
+  // Stored as fully-formed transmit frames (sans instanceId/name, which
+  // are stamped at flush time).
+  const history: Record<string, unknown>[] = []
+
+  function bufferAdd(frame: Record<string, unknown>) {
+    if (frame.type === 'INIT') {
+      history.length = 0
+      history.push(frame)
+    } else {
+      history.push(frame)
+      const overflow = history.length - (maxBufferSize + 1)
+      if (overflow > 0) history.splice(1, overflow)
+    }
+  }
 
   const listeners = new Set<(msg: any) => void>()
   registerConnectionSink(instanceId, (msg) => {
+    if (msg?.type === 'START') {
+      // Replay buffered history so the new panel sees everything.
+      for (const frame of history) {
+        postToWorker({
+          kind: 'transmit',
+          event: 'log',
+          data: { ...frame, instanceId, name },
+        })
+      }
+    }
     listeners.forEach((l) => {
       try {
         l(msg)
       } catch {
-        // listener errors shouldn't break the dispatcher
+        // user listener errors shouldn't break the dispatcher
       }
     })
   })
 
-  const transmit = (frame: Record<string, unknown>) => {
+  function flush(frame: Record<string, unknown>) {
+    bufferAdd(frame)
     postToWorker({
       kind: 'transmit',
       event: 'log',
@@ -83,26 +161,39 @@ export function connect(opts: ConnectOptions = {}): DevToolsConnection {
     })
   }
 
+  function makeStack(): string | undefined {
+    if (!traceFlag) return undefined
+    if (typeof traceFlag === 'function') {
+      try {
+        return traceFlag()
+      } catch {
+        return undefined
+      }
+    }
+    return captureStack(traceLimit)
+  }
+
   return {
     instanceId,
     init(state, action) {
-      transmit({
+      flush({
         type: 'INIT',
         payload: stringify(state),
         action: action !== undefined ? stringify(action) : undefined,
+        libConfig,
       })
     },
     send(action, state) {
       const liftedAction = typeof action === 'string' ? { type: action } : action
-      // Don't send `nextActionId` — the panel's instances reducer auto-
-      // increments from the previous lifted state via
-      // `request.nextActionId || liftedState.nextActionId + 1`. Sending
-      // a value of 1 for the first send collides with INIT's actionId 0
-      // (both compute to `nextActionId - 1`), which the panel then
-      // renders as two action-list rows targeting the same slot.
-      transmit({
+      const stack = makeStack()
+      flush({
         type: 'ACTION',
-        action: stringify({ type: 'PERFORM_ACTION', action: liftedAction, timestamp: Date.now() }),
+        action: stringify({
+          type: 'PERFORM_ACTION',
+          action: liftedAction,
+          timestamp: Date.now(),
+          stack,
+        }),
         payload: stringify(state),
       })
     },
@@ -117,17 +208,19 @@ export function connect(opts: ConnectOptions = {}): DevToolsConnection {
       listeners.clear()
       unregisterConnectionSink(instanceId)
       if (cleanupOnDisconnect) {
-        transmit({ type: 'DISCONNECTED' })
+        postToWorker({
+          kind: 'transmit',
+          event: 'log',
+          data: { type: 'DISCONNECTED', instanceId, name },
+        })
       }
     },
     error(message) {
-      transmit({ type: 'ERROR', payload: message })
+      flush({ type: 'ERROR', payload: message })
     },
   }
 }
 
-/** Disconnect every active connection. */
 export function disconnectAll(): void {
-  // Implemented in transport.ts for visibility into the registry.
-  // Placed here for symmetry with the browser extension API.
+  // Reserved for symmetry with the browser extension's global hook.
 }
