@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+  - 'examples/*'
+  # `examples/installed/` deliberately installs the proxy from a release
+  # tarball to demonstrate the consumer flow; keep it out of the workspace
+  # so pnpm doesn't symlink to the local source instead.
+  - '!examples/installed'

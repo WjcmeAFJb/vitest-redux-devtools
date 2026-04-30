@@ -1,0 +1,18 @@
+{
+  "name": "vitest-redux-devtools-installed-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Drop-in example: installs @vitest-redux-devtools/proxy from a release tarball, shows the import-once vitest setup.",
+  "scripts": {
+    "test": "vitest",
+    "install:tarball": "pnpm install --ignore-workspace"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.2.0",
+    "@vitest-redux-devtools/proxy": "file:../../releases/v0.1.0/vitest-redux-devtools-proxy-0.1.0.tgz"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}

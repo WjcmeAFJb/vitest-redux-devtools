@@ -1,0 +1,39 @@
+{
+  "name": "@vitest-redux-devtools/proxy",
+  "version": "0.1.0",
+  "description": "Wire a Redux store inside a Vitest test to the Redux DevTools VSCode panel.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./install": {
+      "types": "./dist/install.d.ts",
+      "import": "./dist/install.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@redux-devtools/instrument": "^3.0.0",
+    "jsan": "^3.1.14",
+    "socketcluster-client": "^20.0.1"
+  },
+  "peerDependencies": {
+    "redux": "^4.0.0 || ^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "redux": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "redux": "^5.0.1"
+  }
+}

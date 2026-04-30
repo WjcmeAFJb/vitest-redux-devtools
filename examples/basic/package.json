@@ -1,0 +1,16 @@
+{
+  "name": "vitest-redux-devtools-example-basic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.2.0",
+    "@vitest-redux-devtools/proxy": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Build output is committed alongside sources for the release artifacts to
+# work offline; if a clean repo is preferred, exclude these and rely on
+# `pnpm -r build` before packaging.
+# packages/*/dist/
+# packages/vscode-extension/dist/

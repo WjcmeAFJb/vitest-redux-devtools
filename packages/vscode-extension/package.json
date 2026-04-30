@@ -1,0 +1,56 @@
+{
+  "name": "vitest-redux-devtools",
+  "displayName": "Redux DevTools (Vitest)",
+  "version": "0.1.0",
+  "description": "Open the real Redux DevTools UI inside VSCode and connect Vitest tests to it.",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Debuggers", "Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vitestReduxDevTools.open",
+        "title": "Redux DevTools: Open Panel"
+      },
+      {
+        "command": "vitestReduxDevTools.copyEnv",
+        "title": "Redux DevTools: Copy env exports"
+      }
+    ],
+    "configuration": {
+      "title": "Redux DevTools (Vitest)",
+      "properties": {
+        "vitestReduxDevTools.port": {
+          "type": "number",
+          "default": 8765,
+          "description": "Preferred port for the DevTools server. If busy, a free port is picked."
+        },
+        "vitestReduxDevTools.shutdownOnPanelClose": {
+          "type": "boolean",
+          "default": false,
+          "description": "Stop the server when the panel is closed (history is lost)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node esbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@redux-devtools/app": "7.0.0",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socketcluster-server": "^19.2.2",
+    "typescript": "^5.4.0"
+  }
+}
