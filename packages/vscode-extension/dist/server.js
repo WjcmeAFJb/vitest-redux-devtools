@@ -35,6 +35,8 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startServer = startServer;
 const http = __importStar(require("node:http"));
+const fs = __importStar(require("node:fs/promises"));
+const path = __importStar(require("node:path"));
 // `socketcluster-server` does `require(opts.wsEngine)` at runtime, which
 // esbuild can't follow. Importing `ws` here forces esbuild to bundle it.
 // We then hand SC a `{ Server }` shim — SC checks `wsEngine.Server` (the
@@ -49,6 +51,44 @@ async function startServer(port) {
     const scsModule = await import('socketcluster-server');
     const socketClusterServer = scsModule.default ?? scsModule;
     const httpServer = http.createServer();
+    // `/source/*` route serves files from disk so the panel's stack-trace
+    // mapper can fetch sources + sourcemaps and render code previews.
+    // Listen on 127.0.0.1 only and require an absolute path; same blast
+    // radius as the user's IDE process. Uses CORS `*` so the webview can
+    // fetch from a different origin.
+    httpServer.on('request', async (req, res) => {
+        if (!req.url)
+            return;
+        const reqUrl = new URL(req.url, 'http://localhost');
+        if (!reqUrl.pathname.startsWith('/source/')) {
+            res.writeHead(404);
+            res.end();
+            return;
+        }
+        const fsPath = path.normalize(decodeURIComponent(reqUrl.pathname.slice('/source'.length)));
+        if (!path.isAbsolute(fsPath) || fsPath.includes('..')) {
+            res.writeHead(400);
+            res.end('bad path');
+            return;
+        }
+        try {
+            const data = await fs.readFile(fsPath, 'utf8');
+            const ext = path.extname(fsPath);
+            const mime = ext === '.map' ? 'application/json' :
+                ext === '.css' ? 'text/css' :
+                    'text/plain; charset=utf-8';
+            res.writeHead(200, {
+                'content-type': mime,
+                'access-control-allow-origin': '*',
+                'cache-control': 'no-store',
+            });
+            res.end(data);
+        }
+        catch {
+            res.writeHead(404);
+            res.end();
+        }
+    });
     const agServer = socketClusterServer.attach(httpServer, {
         allowClientPublish: false,
         wsEngine,

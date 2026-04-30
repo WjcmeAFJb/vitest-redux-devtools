@@ -21,15 +21,71 @@ function nextInstanceId() {
     const pid = typeof process !== 'undefined' ? process.pid : 0;
     return `vrd-${pid}-${counter}`;
 }
-function captureStack(traceLimit) {
+const NODE_MODULES_RE = /[\\/]node_modules[\\/]/;
+// Path of *this* file at runtime — used to detect and skip the proxy's
+// own frames at the top of every captured stack. Matches when the test
+// installs the proxy from the published tarball
+// (.../node_modules/@vitest-redux-devtools/proxy/dist/) and from the
+// in-workspace source (.../packages/proxy/dist/) alike.
+const PROXY_DIR = (() => {
+    try {
+        const u = new URL('.', import.meta.url);
+        return u.pathname.replace(/\/$/, '');
+    }
+    catch {
+        return '';
+    }
+})();
+// Matches the trailing :line:col on every V8 stack frame. We split each
+// line into "head", "path-with-prefix", ":L:C", "tail" so the rewrite
+// preserves any wrapping (`fn (file:///abs:1:2)` vs `at file:///abs:1:2`).
+const FRAME_LINE_RE = /^(.*?)((?:file:\/\/)?\/[^():\s]+):(\d+):(\d+)(\)?\s*)$/;
+function rewriteFramePath(line, hostname, port) {
+    const m = line.match(FRAME_LINE_RE);
+    if (!m)
+        return line;
+    const [, head, rawPath, ln, col, tail] = m;
+    const fsPath = rawPath.startsWith('file://') ? rawPath.slice('file://'.length) : rawPath;
+    if (!fsPath.startsWith('/'))
+        return line;
+    return `${head}http://${hostname}:${port}/source${fsPath}:${ln}:${col}${tail}`;
+}
+function isProxyOwnFrame(line) {
+    if (PROXY_DIR && line.includes(PROXY_DIR))
+        return true;
+    // Fallback by file basename in case PROXY_DIR resolution failed.
+    return /[\\/](?:connect|devtools|transport|worker|index|install)\.js[:)]/.test(line) &&
+        /vitest-redux-devtools[\\/]?proxy|packages[\\/]proxy/.test(line);
+}
+function captureStack(opts) {
+    const { traceLimit, hostname, port } = opts;
+    // Capture liberally — actual filtering happens below.
     const prev = Error.stackTraceLimit;
-    Error.stackTraceLimit = traceLimit + 4;
+    Error.stackTraceLimit = traceLimit * 5 + 20;
     const err = new Error();
-    // Strip the proxy's own frames so the user sees their call site at the
-    // top. Lines 0-3 are typically: "Error", captureStack, send, transmit.
-    const frames = err.stack?.split('\n').slice(4).join('\n');
     Error.stackTraceLimit = prev;
-    return frames;
+    if (!err.stack)
+        return undefined;
+    const out = [];
+    let userCount = 0;
+    let pastProxy = false;
+    const lines = err.stack.split('\n');
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!pastProxy) {
+            if (isProxyOwnFrame(line))
+                continue;
+            pastProxy = true;
+        }
+        const isInternal = NODE_MODULES_RE.test(line);
+        out.push(rewriteFramePath(line, hostname, port));
+        if (!isInternal) {
+            userCount += 1;
+            if (userCount >= traceLimit)
+                break;
+        }
+    }
+    return out.join('\n');
 }
 export function connect(opts = {}) {
     const instanceId = opts.instanceId ?? nextInstanceId();
@@ -96,6 +152,8 @@ export function connect(opts = {}) {
             data: { ...frame, instanceId, name },
         });
     }
+    const hostname = opts.hostname ?? '127.0.0.1';
+    const port = opts.port ?? 8765;
     function makeStack() {
         if (!traceFlag)
             return undefined;
@@ -107,7 +165,7 @@ export function connect(opts = {}) {
                 return undefined;
             }
         }
-        return captureStack(traceLimit);
+        return captureStack({ traceLimit, hostname, port });
     }
     return {
         instanceId,

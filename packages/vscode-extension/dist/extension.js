@@ -2235,7 +2235,7 @@ var require_websocket = __commonJS({
     var tls = require("tls");
     var { randomBytes, createHash } = require("crypto");
     var { Duplex, Readable } = require("stream");
-    var { URL } = require("url");
+    var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
     var Receiver2 = require_receiver();
     var Sender2 = require_sender();
@@ -2728,11 +2728,11 @@ var require_websocket = __commonJS({
         );
       }
       let parsedUrl;
-      if (address instanceof URL) {
+      if (address instanceof URL2) {
         parsedUrl = address;
       } else {
         try {
-          parsedUrl = new URL(address);
+          parsedUrl = new URL2(address);
         } catch {
           throw new SyntaxError(`Invalid URL: ${address}`);
         }
@@ -2869,7 +2869,7 @@ var require_websocket = __commonJS({
           req.abort();
           let addr;
           try {
-            addr = new URL(location, address);
+            addr = new URL2(location, address);
           } catch (e) {
             const err = new SyntaxError(`Invalid URL: ${location}`);
             emitErrorAndClose(websocket, err);
@@ -4444,7 +4444,7 @@ var require_decycle = __commonJS({
   "../../node_modules/.pnpm/sc-errors@3.0.0/node_modules/sc-errors/decycle.js"(exports2, module2) {
     module2.exports = function decycle(object) {
       var objects = [], paths = [];
-      return function derez(value, path2) {
+      return function derez(value, path3) {
         var i, name, nu;
         if (typeof value === "object" && value !== null && !(value instanceof Boolean) && !(value instanceof Date) && !(value instanceof Number) && !(value instanceof RegExp) && !(value instanceof String)) {
           for (i = 0; i < objects.length; i += 1) {
@@ -4453,11 +4453,11 @@ var require_decycle = __commonJS({
             }
           }
           objects.push(value);
-          paths.push(path2);
+          paths.push(path3);
           if (Object.prototype.toString.apply(value) === "[object Array]") {
             nu = [];
             for (i = 0; i < value.length; i += 1) {
-              nu[i] = derez(value[i], path2 + "[" + i + "]");
+              nu[i] = derez(value[i], path3 + "[" + i + "]");
             }
           } else {
             nu = {};
@@ -4465,7 +4465,7 @@ var require_decycle = __commonJS({
               if (Object.prototype.hasOwnProperty.call(value, name)) {
                 nu[name] = derez(
                   value[name],
-                  path2 + "[" + JSON.stringify(name) + "]"
+                  path3 + "[" + JSON.stringify(name) + "]"
                 );
               }
             }
@@ -11125,11 +11125,13 @@ __export(extension_exports, {
 module.exports = __toCommonJS(extension_exports);
 var vscode = __toESM(require("vscode"));
 var net = __toESM(require("node:net"));
-var path = __toESM(require("node:path"));
-var fs = __toESM(require("node:fs"));
+var path2 = __toESM(require("node:path"));
+var fs2 = __toESM(require("node:fs"));
 
 // src/server.ts
 var http = __toESM(require("node:http"));
+var fs = __toESM(require("node:fs/promises"));
+var path = __toESM(require("node:path"));
 
 // ../../node_modules/.pnpm/ws@8.20.0/node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
@@ -11147,6 +11149,35 @@ async function startServer(port) {
   const scsModule = await Promise.resolve().then(() => __toESM(require_socketcluster_server()));
   const socketClusterServer = scsModule.default ?? scsModule;
   const httpServer = http.createServer();
+  httpServer.on("request", async (req, res) => {
+    if (!req.url) return;
+    const reqUrl = new URL(req.url, "http://localhost");
+    if (!reqUrl.pathname.startsWith("/source/")) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    const fsPath = path.normalize(decodeURIComponent(reqUrl.pathname.slice("/source".length)));
+    if (!path.isAbsolute(fsPath) || fsPath.includes("..")) {
+      res.writeHead(400);
+      res.end("bad path");
+      return;
+    }
+    try {
+      const data = await fs.readFile(fsPath, "utf8");
+      const ext = path.extname(fsPath);
+      const mime = ext === ".map" ? "application/json" : ext === ".css" ? "text/css" : "text/plain; charset=utf-8";
+      res.writeHead(200, {
+        "content-type": mime,
+        "access-control-allow-origin": "*",
+        "cache-control": "no-store"
+      });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end();
+    }
+  });
   const agServer = socketClusterServer.attach(httpServer, {
     allowClientPublish: false,
     wsEngine
@@ -11308,9 +11339,9 @@ async function openPanel(context) {
     panel.reveal();
     return;
   }
-  const webviewDir = path.join(context.extensionPath, "dist", "webview");
+  const webviewDir = path2.join(context.extensionPath, "dist", "webview");
   const required = ["app.js", "app.css"];
-  const missing = required.filter((f) => !fs.existsSync(path.join(webviewDir, f)));
+  const missing = required.filter((f) => !fs2.existsSync(path2.join(webviewDir, f)));
   if (missing.length > 0) {
     vscode.window.showErrorMessage(
       `Redux DevTools: missing bundled assets in dist/webview: ${missing.join(", ")}. Re-run the extension build.`

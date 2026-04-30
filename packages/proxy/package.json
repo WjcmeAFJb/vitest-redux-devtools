@@ -1,6 +1,6 @@
 {
   "name": "@vitest-redux-devtools/proxy",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Wire a Redux store inside a Vitest test to the Redux DevTools VSCode panel.",
   "license": "MIT",
   "type": "module",
