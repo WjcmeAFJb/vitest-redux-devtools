@@ -14,6 +14,7 @@
  * multiple stores can coexist in the panel's instance dropdown.
  */
 import { stringify } from 'jsan'
+import * as fs from 'node:fs'
 import {
   ensureWorker,
   postToWorker,
@@ -21,6 +22,10 @@ import {
   unregisterConnectionSink,
 } from './transport.js'
 import type { DevToolsOptions } from './devtools.js'
+
+/** Synthetic origin used in stack URLs. The webview's patched fetch
+ *  intercepts these before any CSP check happens. */
+const SOURCE_PSEUDO_HOST = 'vrd-source'
 
 export interface ConnectOptions extends DevToolsOptions {
   /** Display name in the panel's instance dropdown. */
@@ -83,8 +88,30 @@ function nextInstanceId(): string {
 
 interface CaptureOptions {
   traceLimit: number
-  hostname: string
-  port: number
+}
+
+interface CaptureResult {
+  stack: string
+  /** Map from absolute file path → file contents, for paths the rewritten
+   *  stack references. The webview's patched fetch serves from this. */
+  sources: Record<string, string>
+}
+
+const sourceCache = new Map<string, string | null>()
+
+function readSourceCached(absPath: string): string | null {
+  if (sourceCache.has(absPath)) return sourceCache.get(absPath)!
+  let content: string | null = null
+  try {
+    const stat = fs.statSync(absPath)
+    if (stat.isFile() && stat.size < 2 * 1024 * 1024) {
+      content = fs.readFileSync(absPath, 'utf8')
+    }
+  } catch {
+    // ignore — likely a node:internal/* path with no on-disk file
+  }
+  sourceCache.set(absPath, content)
+  return content
 }
 
 const NODE_MODULES_RE = /[\\/]node_modules[\\/]/
@@ -107,13 +134,25 @@ const PROXY_DIR = (() => {
 // preserves any wrapping (`fn (file:///abs:1:2)` vs `at file:///abs:1:2`).
 const FRAME_LINE_RE = /^(.*?)((?:file:\/\/)?\/[^():\s]+):(\d+):(\d+)(\)?\s*)$/
 
-function rewriteFramePath(line: string, hostname: string, port: number): string {
+interface RewriteResult {
+  line: string
+  fsPath?: string
+}
+
+function rewriteFramePath(line: string): RewriteResult {
   const m = line.match(FRAME_LINE_RE)
-  if (!m) return line
+  if (!m) return { line }
   const [, head, rawPath, ln, col, tail] = m
   const fsPath = rawPath.startsWith('file://') ? rawPath.slice('file://'.length) : rawPath
-  if (!fsPath.startsWith('/')) return line
-  return `${head}http://${hostname}:${port}/source${fsPath}:${ln}:${col}${tail}`
+  if (!fsPath.startsWith('/')) return { line }
+  // Use a synthetic host that won't be reachable on the real network —
+  // the webview intercepts fetches to it. URI-encode ':' inside the
+  // path so the trailing :L:C parses correctly downstream.
+  const encoded = encodeURI(fsPath)
+  return {
+    line: `${head}http://${SOURCE_PSEUDO_HOST}${encoded}:${ln}:${col}${tail}`,
+    fsPath,
+  }
 }
 
 function isProxyOwnFrame(line: string): boolean {
@@ -123,9 +162,8 @@ function isProxyOwnFrame(line: string): boolean {
     /vitest-redux-devtools[\\/]?proxy|packages[\\/]proxy/.test(line)
 }
 
-function captureStack(opts: CaptureOptions): string | undefined {
-  const { traceLimit, hostname, port } = opts
-  // Capture liberally — actual filtering happens below.
+function captureStack(opts: CaptureOptions): CaptureResult | undefined {
+  const { traceLimit } = opts
   const prev = Error.stackTraceLimit
   Error.stackTraceLimit = traceLimit * 5 + 20
   const err = new Error()
@@ -133,6 +171,7 @@ function captureStack(opts: CaptureOptions): string | undefined {
   if (!err.stack) return undefined
 
   const out: string[] = []
+  const sources: Record<string, string> = {}
   let userCount = 0
   let pastProxy = false
   const lines = err.stack.split('\n')
@@ -143,13 +182,18 @@ function captureStack(opts: CaptureOptions): string | undefined {
       pastProxy = true
     }
     const isInternal = NODE_MODULES_RE.test(line)
-    out.push(rewriteFramePath(line, hostname, port))
+    const { line: rewritten, fsPath } = rewriteFramePath(line)
+    out.push(rewritten)
+    if (fsPath && !(fsPath in sources)) {
+      const content = readSourceCached(fsPath)
+      if (content !== null) sources[fsPath] = content
+    }
     if (!isInternal) {
       userCount += 1
       if (userCount >= traceLimit) break
     }
   }
-  return out.join('\n')
+  return { stack: out.join('\n'), sources }
 }
 
 export function connect(opts: ConnectOptions = {}): DevToolsConnection {
@@ -221,19 +265,17 @@ export function connect(opts: ConnectOptions = {}): DevToolsConnection {
     })
   }
 
-  const hostname = opts.hostname ?? '127.0.0.1'
-  const port = opts.port ?? 8765
-
-  function makeStack(): string | undefined {
+  function makeStack(): CaptureResult | undefined {
     if (!traceFlag) return undefined
     if (typeof traceFlag === 'function') {
       try {
-        return traceFlag()
+        const stack = traceFlag()
+        return stack ? { stack, sources: {} } : undefined
       } catch {
         return undefined
       }
     }
-    return captureStack({ traceLimit, hostname, port })
+    return captureStack({ traceLimit })
   }
 
   return {
@@ -248,14 +290,17 @@ export function connect(opts: ConnectOptions = {}): DevToolsConnection {
     },
     send(action, state) {
       const liftedAction = typeof action === 'string' ? { type: action } : action
-      const stack = makeStack()
+      const captured = makeStack()
       flush({
         type: 'ACTION',
         action: stringify({
           type: 'PERFORM_ACTION',
           action: liftedAction,
           timestamp: Date.now(),
-          stack,
+          stack: captured?.stack,
+          // Webview's patched fetch reads from this map, indexed by the
+          // absolute path embedded in the rewritten stack URL.
+          _vrdSources: captured?.sources,
         }),
         payload: stringify(state),
       })
